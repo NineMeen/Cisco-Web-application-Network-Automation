@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Network Automation</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+</head>
+<body class="main">
+  <div class="header">
+    <div class="user-icon" id="userIcon">
+      <img src="https://cdn-icons-png.flaticon.com/512/1077/1077063.png" alt="User Icon">
+    </div>
+    <div class="popup-menu" id="popupMenu">
+      <a href="/logout">Logout</a>
+    </div>
+  </div>
+  <div class="main-container">
+    <div class="card">
+      <h1 class="title">Network Automation</h1>
+      <p>CHOOSE A CATEGORY</p>
+
+      <div class="row">
+        <div class="col" style="text-align: center;">
+          <div class="icon" style="margin: 0 auto;">
+            <img src="https://cdn-icons-png.flaticon.com/512/3694/3694158.png" alt="Router">
+          </div>
+          <p>Router</p>
+        </div>
+        <div class="col" style="text-align: center;">
+          <div class="icon" style="margin: 0 auto;">
+            <img src="https://cdn-icons-png.flaticon.com/512/3694/3694157.png" alt="Switch Layer 2">
+          </div>
+          <p>Switch Layer 2</p>
+        </div>
+        <div class="col" style="text-align: center;">
+          <div class="icon" style="margin: 0 auto;">
+            <img src="https://cdn-icons-png.flaticon.com/512/3694/3694157.png" alt="Switch Layer 3">
+          </div>
+          <p>Switch Layer 3</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+</body>
+</html>
