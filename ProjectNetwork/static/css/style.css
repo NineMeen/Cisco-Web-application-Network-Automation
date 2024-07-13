@@ -1,6 +1,6 @@
 body.main {
-    background-color: #ffffff;
-    color: #eee;
+    background-color: #9c88ff;
+    color: #9c88ff;
     font-family: sans-serif;
     text-align: center;
   }
@@ -100,12 +100,12 @@ body.main {
   
 body.login {
     font-family: Arial, sans-serif;
-    background-color: #f0f0f0;
+    background-color: #9c88ff;
   }
   
   .login-container {
     max-width: 300px;
-    margin: 40px auto;
+    margin: 250px auto;
     padding: 20px;
     background-color: #fff;
     border: 1px solid #ddd;

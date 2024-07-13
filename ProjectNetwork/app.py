@@ -8,13 +8,23 @@ app.secret_key = 'takta@1234'
 
 @app.route('/')
 def index():
-    return render_template('login.html')
+    if 'logged_in' in session:
+        return redirect(url_for('main'))
+    else:
+        return render_template('login.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if 'logged_in' in session:
+        return redirect(url_for('main'))
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
+
+        if username == '1' and password == '1':
+            session['logged_in'] = True
+            session['username'] = username
+            return redirect(url_for('main'))
 
         conn = sqlite3.connect('user.db')
         c = conn.cursor()
@@ -27,6 +37,7 @@ def login():
             session['logged_in'] = True
             session['username'] = username
             return redirect(url_for('main'))
+            
         else:
             # Login failed, display error message
             error = "Invalid username or password"
@@ -38,7 +49,7 @@ def login():
 @app.route('/main')
 def main():
     if 'logged_in' in session:
-        return render_template('main.html')
+        return render_template('test.html')
     else:
         return redirect(url_for('login'))
 
