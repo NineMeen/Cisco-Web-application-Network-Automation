@@ -45,19 +45,36 @@ def login():
 
     return render_template('login.html')
 
-
-@app.route('/main')
-def main():
-    if 'logged_in' in session:
-        return render_template('test.html')
-    else:
-        return redirect(url_for('login'))
-
 @app.route('/logout')
 def logout():
     session.pop('logged_in', None)
     session.pop('username', None)
     return redirect(url_for('login'))
+
+@app.route('/main')
+def main():
+    if 'logged_in' in session:
+        return render_template('main.html')
+        
+
+    else:
+        return redirect(url_for('login'))
+
+
+
+@app.route('/router_device')
+def router_device():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM router_device")
+        router_device = c.fetchall()
+        conn.close()
+        return render_template('router_device.html', router_device=router_device)
+    else:
+        return redirect(url_for('login'))
+
+
 
 @app.route('/ssh_connect', methods=['GET','POST'])
 def ssh_connect():
