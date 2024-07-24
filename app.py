@@ -58,9 +58,14 @@ def main():
         
 
     else:
-        return redirect(url_for('login'))
+        return redirect(url_for('login.html'))
 
-
+@app.route('/router_ip_config')
+def router_ip_config():
+    if 'logged_in' in session:
+        return render_template('router_ip_config.html')
+    else:
+        return redirect(url_for('login.html'))
 
 @app.route('/router_device')
 def router_device():
@@ -74,6 +79,14 @@ def router_device():
     else:
         return redirect(url_for('login'))
 
+
+@app.route('/dhcp_create')
+def dhcp_create():
+    if 'logged_in' in session:
+        return render_template('dhcp_creat.html')
+    else:
+        return redirect(url_for('login.html'))
+    
 
 
 @app.route('/ssh_connect', methods=['GET','POST'])
