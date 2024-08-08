@@ -101,45 +101,6 @@
                 </li>
             </ul>
         </div>
-        <div class="container">
-            <h1>DHCP Pool Create </h1>
-            <form action="/configure_acl" method="post">
-                <input type="text" name="device_ip" placeholder="Device IP" class="form-control mb-2">
-                <input type="text" name="dhcp_pool_name" placeholder="DHCP Pool Name" class="form-control mb-2">
-                <input type="text" name="dhcp_network" placeholder="DHCP Network" class="form-control mb-2">
-                <input type="text" name="dhcp_subnet" placeholder="DHCP Subnet" class="form-control mb-2">
-                <input type="text" name="dhcp_gateway" placeholder="DHCP Gateway" class="form-control mb-2">
-                <input type="text" name="dhcp_dns" placeholder="DHCP DNS" class="form-control mb-2">
-                <input type="text" name="dhcp_lease" placeholder="DHCP Lease" class="form-control mb-2">
-                <input type="submit" value="Create DHCP Pool" class="btn btn-primary">
-            </form>
-    
-            {% if output %}
-            <!-- Modal -->
-            <div class="modal fade" id="outputModal" tabindex="-1" role="dialog" aria-labelledby="outputModalLabel" aria-hidden="true">
-                <div class="modal-dialog" role="document">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="outputModalLabel">Configuration Result</h5>
-                            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                                <span aria-hidden="true">&times;</span>
-                            </button>
-                        </div>
-                        <div class="modal-body">
-                            <pre>{{ output }}</pre>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <script>
-                var outputLines = `{{ output | e }}`.split('\n').slice(0, 10).join('\n');
-                alert(outputLines);
-            </script>
-            {% endif %}
-        </div>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>

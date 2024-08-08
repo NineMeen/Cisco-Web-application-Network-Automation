@@ -102,16 +102,16 @@
             </ul>
         </div>
         <div class="container">
-            <h1>DHCP Pool Create </h1>
+            <h1>Configure ACL</h1>
             <form action="/configure_acl" method="post">
                 <input type="text" name="device_ip" placeholder="Device IP" class="form-control mb-2">
-                <input type="text" name="dhcp_pool_name" placeholder="DHCP Pool Name" class="form-control mb-2">
-                <input type="text" name="dhcp_network" placeholder="DHCP Network" class="form-control mb-2">
-                <input type="text" name="dhcp_subnet" placeholder="DHCP Subnet" class="form-control mb-2">
-                <input type="text" name="dhcp_gateway" placeholder="DHCP Gateway" class="form-control mb-2">
-                <input type="text" name="dhcp_dns" placeholder="DHCP DNS" class="form-control mb-2">
-                <input type="text" name="dhcp_lease" placeholder="DHCP Lease" class="form-control mb-2">
-                <input type="submit" value="Create DHCP Pool" class="btn btn-primary">
+                <input type="text" name="username" placeholder="Username" class="form-control mb-2">
+                <input type="text" name="password" placeholder="Password" class="form-control mb-2">
+                <input type="text" name="secret_pass" placeholder="Secret Pass" class="form-control mb-2">
+                <input type="text" name="acl_name" placeholder="ACL Name" class="form-control mb-2">
+                <textarea name="acl_rules" rows="10" cols="30" placeholder="Enter ACL rules, one per line" class="form-control mb-2"></textarea>
+                <input type="submit" value="Configure ACL" class="btn btn-primary">
+                <a href="/" class="btn btn-secondary">Back</a> <!-- Back button -->
             </form>
     
             {% if output %}

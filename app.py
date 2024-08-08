@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, session, redirect, url_for
+from flask import flash
 from netmiko import ConnectHandler
 import sqlite3 
 import datetime
@@ -58,16 +59,16 @@ def main():
         
 
     else:
-        return redirect(url_for('login.html'))
+        return redirect(url_for('login'))
 
-@app.route('/router_ip_config')
+@app.route('/router_ip_config',methods=['GET','POST'])
 def router_ip_config():
     if 'logged_in' in session:
         return render_template('router_ip_config.html')
     else:
-        return redirect(url_for('login.html'))
+        return redirect(url_for('login'))
 
-@app.route('/router_device')
+@app.route('/router/device',methods=['GET','POST'])
 def router_device():
     if 'logged_in' in session:
         conn = sqlite3.connect('device.db')
@@ -75,18 +76,78 @@ def router_device():
         c.execute("SELECT * FROM router_device")
         router_device = c.fetchall()
         conn.close()
-        return render_template('router_device.html', router_device=router_device)
+        return render_template('router_devices.html', router_device=router_device) 
     else:
         return redirect(url_for('login'))
 
 
-@app.route('/dhcp_create')
+@app.route('/add/device/router',methods=['GET','POST'])
+def add_device_router():
+    if 'logged_in' in session:
+        if request.method == 'POST':
+            device_type = request.form['device_type']
+            ip_address = request.form['ip_address']
+            user = request.form['user']
+            password = request.form['password']
+            secret_password = request.form['secret_password']
+            hostname = request.form['hostname']
+
+            conn = sqlite3.connect('device.db')
+            c = conn.cursor()
+
+            # Check if device already exists
+            c.execute("SELECT * FROM router_device WHERE hostname=? AND ip_address=? AND user=?", (hostname, ip_address, user))
+            existing_device = c.fetchone()
+            if existing_device:
+                flash('Device data already exists in the database')
+                return render_template('router_add_devices.html')
+
+            now = datetime.datetime.now()
+            date_add = now.strftime("%d-%m-%Y %H:%M:%S")
+            c.execute(
+                "INSERT INTO router_device (device_type, ip_address, user, password, secret_password, hostname, date_add) VALUES (?,?,?,?,?,?,?)", 
+                      (device_type, 
+                       ip_address, 
+                       user, 
+                       password, 
+                       secret_password, 
+                       hostname, 
+                       date_add,
+                       ),
+                       )
+            conn.commit()
+            conn.close()
+
+            return redirect(url_for('router_device'))
+        return render_template('router_add_devices.html')
+    
+    else:
+        return redirect(url_for('login'))
+
+@app.route('/devices/delete/<int:id>', methods=['GET', 'POST'])
+def delete_device(id):
+    if request.method == 'POST':
+        conn = sqlite3.connect('device.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM router_device WHERE id=?", (id,))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('router_device'))
+    return render_template('router_device.html')
+
+@app.route('/dhcp_create', methods=['GET', 'POST'])
 def dhcp_create():
     if 'logged_in' in session:
+        if request.method == 'POST':
+            device_ip = request.form['device_ip']
+            username = request.form['username']
+            password = request.form['password']
+            secret_pass = request.form.get('secret_pass')
+            # Process the form data here
+            #...
         return render_template('dhcp_creat.html')
     else:
-        return redirect(url_for('login.html'))
-    
+        return redirect(url_for('login'))
 
 
 @app.route('/ssh_connect', methods=['GET','POST'])
@@ -154,10 +215,10 @@ def backup_config():
 
         return render_template('result.html', output=output)
 
-@app.route('/configure_acl', methods=['GET', 'POST'])
-def configure_acl_route():
+@app.route('/router_acl_config', methods=['GET', 'POST'])
+def router_acl_config():
     if request.method == 'GET':
-        return render_template('configure_acl.html')
+        return render_template('router_acl_config.html')
     elif request.method == 'POST':
         device_ip = request.form['device_ip']
         username = request.form['username']
@@ -188,7 +249,7 @@ def configure_acl_route():
         except Exception as e:
             output = f"Error: {str(e)}"
 
-        return render_template('configure_acl.html', output=output)
+        return render_template('router_acl_config.html', output=output)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=80, debug=True)
