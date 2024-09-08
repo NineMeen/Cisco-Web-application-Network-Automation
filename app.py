@@ -628,12 +628,28 @@ def router_acl_config():
         protocol = request.form['protocol']
         source_type = request.form['source_type']
         source_ip = request.form['source_ip']
+        source_subnet = request.form.get('source_wildcard', '')
         destination_type = request.form['destination_type']
         destination_ip = request.form['destination_ip']
-
+        destination_subnet = request.form.get('destination_wildcard', '')
+        
         # สร้าง ACL rule
-        source = 'any' if source_type == 'any' else f"host {source_ip}" if source_type == 'host' else source_ip
-        destination = 'any' if destination_type == 'any' else f"host {destination_ip}" if destination_type == 'host' else destination_ip
+        if source_type == 'any':
+            source = 'any'
+        elif source_type == 'host':
+            source = f"host {source_ip}"
+        else:
+            wildcard = subnet_to_wildcard(source_subnet)
+            source = f"{source_ip} {wildcard}"
+
+        if destination_type == 'any':
+            destination = 'any'
+        elif destination_type == 'host':
+            destination = f"host {destination_ip}"
+        else:
+            wildcard = subnet_to_wildcard(destination_subnet)
+            destination = f"{destination_ip} {wildcard}"
+
         acl_rule = f"{action} {protocol} {source} {destination}"
 
         # ส่ง configuration ไปยังอุปกรณ์
@@ -654,12 +670,90 @@ def router_acl_config():
                         acl_rule
                     ]
                     output = net_connect.send_config_set(commands)
-                    return jsonify({'status': 'success', 'message': f"ACL rule added successfully: {acl_rule}"})
+                    return jsonify({'status': 'success', 'message': 'ACL rule added successfully'})
             except Exception as e:
                 return jsonify({'status': 'error', 'message': f"Error configuring ACL: {str(e)}"})
         else:
             return jsonify({'status': 'error', 'message': "Device not found"})
+        
+def subnet_to_wildcard(subnet):
+    subnet_octets = subnet.split('.')
+    wildcard_octets = ['255' if octet == '0' else str(255 - int(octet)) for octet in subnet_octets]
+    return '.'.join(wildcard_octets)
 
+
+@app.route('/edit_acl_rule', methods=['POST'])
+def edit_acl_rule():
+    device_id = request.form['device_id']
+    acl_name = request.form['acl_name']
+    sequence = request.form['sequence']
+    action = request.form['action']
+    protocol = request.form['protocol']
+    source_type = request.form['source_type']
+    source_ip = request.form['source_ip']
+    source_wildcard = request.form.get('source_wildcard', '')
+    destination_type = request.form['destination_type']
+    destination_ip = request.form['destination_ip']
+    destination_wildcard = request.form.get('destination_wildcard', '')
+    
+    device_info = get_device_info(device_id)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+    
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'port': 22,
+    }
+    
+    # Construct source and destination parts of the ACL rule
+    if source_type == 'any':
+        source = 'any'
+    elif source_type == 'host':
+        source = f"host {source_ip}"
+    else:
+        source = f"{source_ip} {source_wildcard}"
+
+    if destination_type == 'any':
+        destination = 'any'
+    elif destination_type == 'host':
+        destination = f"host {destination_ip}"
+    else:
+        destination = f"{destination_ip} {destination_wildcard}"
+    
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            
+            # Check if the rule exists
+            show_acl = net_connect.send_command(f'show ip access-list {acl_name}')
+            if f"sequence {sequence}" not in show_acl:
+                return jsonify({'status': 'error', 'message': f'Rule with sequence {sequence} not found in ACL {acl_name}'})
+            
+            # Construct the new rule
+            new_rule = f"{sequence} {action} {protocol} {source} {destination}"
+            
+            commands = [
+                f"ip access-list extended {acl_name}",
+                f"no {sequence}",  # Remove the old rule
+                new_rule  # Add the new rule
+            ]
+            output = net_connect.send_config_set(commands)
+            
+            # Verify if the rule was added successfully
+            show_acl_after = net_connect.send_command(f'show ip access-list {acl_name}')
+            if new_rule not in show_acl_after:
+                return jsonify({'status': 'error', 'message': 'Failed to edit the rule. Please check the device configuration.'})
+            
+            # Fetch updated rules
+            updated_rules = parse_acl_rules(show_acl_after)
+            
+        return jsonify({'status': 'success', 'message': 'Rule edited successfully', 'updated_rules': updated_rules})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})    
+    
 
 
 @app.route('/delete_acl_rule', methods=['POST'])

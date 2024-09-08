@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .acl-name {
+        cursor: pointer;
+        padding: 10px;
+        background-color: #f0f0f0;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    
+    .acl-name:hover {
+        background-color: #e0e0e0;
+    }
+    
+    .acl-rules {
+        margin-top: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+    }
+    </style>
+<h1>Configure ACL</h1>
+<form id="acl_form" >
+    <div class="mb-3">
+        <label for="device_id" class="form-label">Select Device</label>
+        <select class="form-select" id="device_id" name="device_id" required>
+            {% for device in devices %}
+                <option value="{{ device[0] }}">{{ device[1] }} ({{ device[2] }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label for="acl_name" class="form-label">ACL Name</label>
+        <input type="text" class="form-control" id="acl_name" name="acl_name" required>
+    </div>
+    <div class="mb-3">
+        <label for="action" class="form-label">Action</label>
+        <select class="form-select" id="action" name="action" required>
+            <option value="permit">Permit</option>
+            <option value="deny">Deny</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label for="protocol" class="form-label">Protocol</label>
+        <select class="form-select" id="protocol" name="protocol" required>
+            <option value="ip">IP</option>
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+            <option value="icmp">ICMP</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Source IP</label>
+        <div class="input-group">
+            <select class="form-select" id="source_type" name="source_type">
+                <option value="any">Any</option>
+                <option value="host">Host</option>
+                <option value="network">Network</option>
+            </select>
+            <input type="text" class="form-control" id="source_ip" name="source_ip" placeholder="IP address">
+            <input type="text" class="form-control" id="source_wildcard" name="source_wildcard" placeholder="Wildcard mask">
+        </div>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Destination IP</label>
+        <div class="input-group">
+            <select class="form-select" id="destination_type" name="destination_type">
+                <option value="any">Any</option>
+                <option value="host">Host</option>
+                <option value="network">Network</option>
+            </select>
+            <input type="text" class="form-control" id="destination_ip" name="destination_ip" placeholder="IP address">
+            <input type="text" class="form-control" id="destination_wildcard" name="destination_wildcard" placeholder="Wildcard mask">
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Add ACL Rule</button>
+</form>
+
+<div id="acl_list_container" class="mt-4">
+    <h2>ACL List</h2>
+    <ul id="acl_list" class="list-group">
+        <!-- ACL names will be dynamically added here -->
+    </ul>
+</div>
+
+<!-- Edit Rule Modal -->
+<div class="modal fade" id="editRuleModal" tabindex="-1" aria-labelledby="editRuleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editRuleModalLabel">Edit ACL Rule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editRuleForm">
+                    <input type="hidden" id="editAclName" name="acl_name">
+                    <input type="hidden" id="editSequence" name="sequence">
+                    <div class="mb-3">
+                        <label for="editAction" class="form-label">Action</label>
+                        <select class="form-select" id="editAction" name="action" required>
+                            <option value="permit">Permit</option>
+                            <option value="deny">Deny</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editProtocol" class="form-label">Protocol</label>
+                        <select class="form-select" id="editProtocol" name="protocol" required>
+                            <option value="ip">IP</option>
+                            <option value="tcp">TCP</option>
+                            <option value="udp">UDP</option>
+                            <option value="icmp">ICMP</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Source IP</label>
+                        <div class="input-group">
+                            <select class="form-select" id="editSourceType" name="source_type" required>
+                                <option value="any">Any</option>
+                                <option value="host">Host</option>
+                                <option value="network">Network</option>
+                            </select>
+                            <input type="text" class="form-control" id="editSourceIP" name="source_ip" placeholder="IP Address">
+                            <input type="text" class="form-control" id="editSourceWildcard" name="source_wildcard" placeholder="Wildcard Mask">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Destination IP</label>
+                        <div class="input-group">
+                            <select class="form-select" id="editDestinationType" name="destination_type" required>
+                                <option value="any">Any</option>
+                                <option value="host">Host</option>
+                                <option value="network">Network</option>
+                            </select>
+                            <input type="text" class="form-control" id="editDestinationIP" name="destination_ip" placeholder="IP Address">
+                            <input type="text" class="form-control" id="editDestinationWildcard" name="destination_wildcard" placeholder="Wildcard Mask">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="saveEditButton">Save changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    let deviceSelect; // Declare deviceSelect in the global scope
+    let aclExpandedState = {};  // Object to store expanded state of each ACL
+    let aclRules = {};
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        deviceSelect = document.getElementById('device_id');
+        const aclForm = document.getElementById('acl_form');
+        const aclList = document.getElementById('acl_list');
+        const rulesContainer = document.getElementById('rules_container');
+        const rulesBody = document.getElementById('rules_body');
+        const editRuleModal = new bootstrap.Modal(document.getElementById('editRuleModal'));
+        const editRuleForm = document.getElementById('editRuleForm');
+        const saveEditButton = document.getElementById('saveEditButton');
+        const sourceType = document.getElementById('source_type');
+        const sourceIp = document.getElementById('source_ip');
+        const sourceWildcard = document.getElementById('source_wildcard');
+        const destinationType = document.getElementById('destination_type');
+        const destinationIp = document.getElementById('destination_ip');
+        const destinationWildcard = document.getElementById('destination_wildcard');
+        const editSourceType = document.getElementById('editSourceType');
+        const editSourceIP = document.getElementById('editSourceIP');
+        const editSourceWildcard = document.getElementById('editSourceWildcard');
+        const editDestinationType = document.getElementById('editDestinationType');
+        const editDestinationIP = document.getElementById('editDestinationIP');
+        const editDestinationWildcard = document.getElementById('editDestinationWildcard');
+    
+        sourceType.addEventListener('change', function() {
+            if (sourceType.value === 'any') {
+                sourceIp.style.display = 'none';
+                sourceWildcard.style.display = 'none';
+            } else {
+                sourceIp.style.display = 'block';
+                sourceWildcard.style.display = sourceType.value === 'network' ? 'block' : 'none';
+            }
+        });
+    
+        destinationType.addEventListener('change', function() {
+            if (destinationType.value === 'any') {
+                destinationIp.style.display = 'none';
+                destinationWildcard.style.display = 'none';
+            } else {
+                destinationIp.style.display = 'block';
+                destinationWildcard.style.display = destinationType.value === 'network' ? 'block' : 'none';
+            }
+        });
+    
+        sourceType.dispatchEvent(new Event('change'));
+        destinationType.dispatchEvent(new Event('change'));
+    
+        deviceSelect.addEventListener('change', updateACLRules);
+        aclForm.addEventListener('submit', handleFormSubmit);
+        saveEditButton.addEventListener('click', saveEditedRule);
+    
+        // Initial load of ACL list
+        updateACLRules();
+    
+        function updateACLRules() {
+            const deviceId = deviceSelect.value;
+            fetch(`/get_acl_rules?device_id=${deviceId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        aclRules = data.acl_groups;
+                        aclList.innerHTML = '';
+                        for (const [aclName, rules] of Object.entries(data.acl_groups)) {
+                            const aclDiv = document.createElement('div');
+                            aclDiv.className = 'acl-item mb-3';
+                            const isExpanded = aclExpandedState[aclName] || false;
+                            aclDiv.innerHTML = `
+                                <h3 class="acl-name" data-acl="${aclName}">
+                                    ${aclName} <span class="badge bg-secondary">${rules.length} rules</span>
+                                </h3>
+                                <div class="acl-rules" style="display: ${isExpanded ? 'block' : 'none'};">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Sequence</th>
+                                                <th>Action</th>
+                                                <th>Protocol</th>
+                                                <th>Source IP</th>
+                                                <th>Destination IP</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${rules.map((rule, index) => `
+                                                <tr>
+                                                    <td>${rule.sequence}</td>
+                                                    <td>${rule.action}</td>
+                                                    <td>${rule.protocol}</td>
+                                                    <td>${rule.source_ip}</td>
+                                                    <td>${rule.destination_ip}</td>
+                                                    <td>
+                                                        ${index > 0 ? `<button class="btn btn-sm btn-secondary move-up" data-acl="${aclName}" data-sequence="${rule.sequence}">▲</button>` : ''}
+                                                        ${index < rules.length - 1 ? `<button class="btn btn-sm btn-secondary move-down" data-acl="${aclName}" data-sequence="${rule.sequence}">▼</button>` : ''}
+                                                        <button class="btn btn-sm btn-primary edit-rule" data-acl="${aclName}" data-sequence="${rule.sequence}">Edit</button>
+                                                        <button class="btn btn-sm btn-danger delete-rule" data-acl="${aclName}" data-sequence="${rule.sequence}">Delete</button>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `;
+                            aclList.appendChild(aclDiv);
+                        }
+                        addEventListeners();
+                        rulesContainer.style.display = 'block';
+                    } else {
+                        console.error('Error fetching ACL rules:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+    
+        function handleFormSubmit(event) {
+    event.preventDefault();
+    const formData = new FormData(aclForm);
+    
+    fetch('/router_acl_config', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(data.message);  // แสดงข้อความสำเร็จ
+            updateACLRules();
+            aclForm.reset();
+        } else {
+            alert('Error adding ACL rule: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while adding the ACL rule.');
+    });
+}
+    
+        function addEventListeners() {
+            const aclNames = document.querySelectorAll('.acl-name');
+            const moveUpButtons = document.querySelectorAll('.move-up');
+            const moveDownButtons = document.querySelectorAll('.move-down');
+            const deleteButtons = document.querySelectorAll('.delete-rule');
+            const editButtons = document.querySelectorAll('.edit-rule');
+    
+            aclNames.forEach(aclName => {
+                aclName.addEventListener('click', function() {
+                    const aclNameValue = this.getAttribute('data-acl');
+                    const rulesDiv = this.nextElementSibling;
+                    aclExpandedState[aclNameValue] = !aclExpandedState[aclNameValue];
+                    rulesDiv.style.display = aclExpandedState[aclNameValue] ? 'block' : 'none';
+                });
+            });
+    
+            moveUpButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const aclName = this.getAttribute('data-acl');
+                    const sequence = this.getAttribute('data-sequence');
+                    moveRule(aclName, sequence, 'up');
+                });
+            });
+    
+            moveDownButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const aclName = this.getAttribute('data-acl');
+                    const sequence = this.getAttribute('data-sequence');
+                    moveRule(aclName, sequence, 'down');
+                });
+            });
+    
+            deleteButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const aclName = this.getAttribute('data-acl');
+                    const sequence = this.getAttribute('data-sequence');
+                    if (confirm('Are you sure you want to delete this rule?')) {
+                        deleteRule(aclName, sequence);
+                    }
+                });
+            });
+    
+            editButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const aclName = this.getAttribute('data-acl');
+                    const sequence = this.getAttribute('data-sequence');
+                    openEditModal(aclName, sequence);
+                });
+            });
+        }
+    
+        function updateEditFormVisibility(type, ipField, wildcardField) {
+        if (type.value === 'any') {
+            ipField.style.display = 'none';
+            wildcardField.style.display = 'none';
+        } else {
+            ipField.style.display = 'block';
+            wildcardField.style.display = type.value === 'network' ? 'block' : 'none';
+        }
+    }
+
+        editSourceType.addEventListener('change', () => updateEditFormVisibility(editSourceType, editSourceIP, editSourceWildcard));
+        editDestinationType.addEventListener('change', () => updateEditFormVisibility(editDestinationType, editDestinationIP, editDestinationWildcard));
+
+        function openEditModal(aclName, sequence) {
+        const rule = findRule(aclName, sequence);
+        if (rule) {
+            document.getElementById('editAclName').value = aclName;
+            document.getElementById('editSequence').value = sequence;
+            document.getElementById('editAction').value = rule.action;
+            document.getElementById('editProtocol').value = rule.protocol;
+
+            // Parse source IP
+            if (rule.source_ip === 'any') {
+                editSourceType.value = 'any';
+                editSourceIP.value = '';
+                editSourceWildcard.value = '';
+            } else if (rule.source_ip.startsWith('host')) {
+                editSourceType.value = 'host';
+                editSourceIP.value = rule.source_ip.split(' ')[1];
+                editSourceWildcard.value = '';
+            } else {
+                editSourceType.value = 'network';
+                const [ip, wildcard] = rule.source_ip.split(' ');
+                editSourceIP.value = ip;
+                editSourceWildcard.value = wildcard;
+            }
+
+            // Parse destination IP
+            if (rule.destination_ip === 'any') {
+                editDestinationType.value = 'any';
+                editDestinationIP.value = '';
+                editDestinationWildcard.value = '';
+            } else if (rule.destination_ip.startsWith('host')) {
+                editDestinationType.value = 'host';
+                editDestinationIP.value = rule.destination_ip.split(' ')[1];
+                editDestinationWildcard.value = '';
+            } else {
+                editDestinationType.value = 'network';
+                const [ip, wildcard] = rule.destination_ip.split(' ');
+                editDestinationIP.value = ip;
+                editDestinationWildcard.value = wildcard;
+            }
+
+            updateEditFormVisibility(editSourceType, editSourceIP, editSourceWildcard);
+            updateEditFormVisibility(editDestinationType, editDestinationIP, editDestinationWildcard);
+
+            editRuleModal.show();
+        } else {
+            console.error('Rule not found:', aclName, sequence);
+            alert('Error: Rule not found');
+        }
+    }    
+        function findRule(aclName, sequence) {
+            if (aclRules[aclName]) {
+                return aclRules[aclName].find(rule => rule.sequence === sequence);
+            }
+            return null;
+        }
+    
+        function saveEditedRule() {
+        const formData = new FormData(editRuleForm);
+        formData.append('device_id', deviceSelect.value);
+
+        // Construct source_ip and destination_ip based on type
+        const sourceType = formData.get('source_type');
+        if (sourceType === 'any') {
+            formData.set('source_ip', 'any');
+        } else if (sourceType === 'host') {
+            formData.set('source_ip', `host ${formData.get('source_ip')}`);
+        } else {
+            formData.set('source_ip', `${formData.get('source_ip')} ${formData.get('source_wildcard')}`);
+        }
+
+        const destinationType = formData.get('destination_type');
+        if (destinationType === 'any') {
+            formData.set('destination_ip', 'any');
+        } else if (destinationType === 'host') {
+            formData.set('destination_ip', `host ${formData.get('destination_ip')}`);
+        } else {
+            formData.set('destination_ip', `${formData.get('destination_ip')} ${formData.get('destination_wildcard')}`);
+        }
+
+        fetch('/edit_acl_rule', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                editRuleModal.hide();
+                updateACLRules();
+                alert('Rule updated successfully');
+            } else {
+                console.error('Error editing ACL rule:', data.message);
+                alert('Error editing rule: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while editing the rule');
+        });
+    }    
+        function moveRule(aclName, sequence, direction) {
+            const formData = new FormData();
+            formData.append('device_id', deviceSelect.value);
+            formData.append('acl_name', aclName);
+            formData.append('sequence', sequence);
+            formData.append('direction', direction);
+    
+            fetch('/move_rule', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    updateACLRules();
+                } else {
+                    console.error('Error moving rule:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+    
+        function deleteRule(aclName, sequence) {
+            const formData = new FormData();
+            formData.append('device_id', deviceSelect.value);
+            formData.append('acl_name', aclName);
+            formData.append('sequence', sequence);
+    
+            fetch('/delete_acl_rule', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    console.log(data.message);
+                    updateACLRules();
+                } else {
+                    console.error('Error deleting rule:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+    });
+    
+    // Make updateACLList a global function
+    window.updateACLList = function() {
+        if (typeof updateACLRules === 'function') {
+            updateACLRules();
+        } else {
+            console.error('updateACLRules function is not defined');
+        }
+    };
+    </script>
+{% endblock %}
