@@ -2,7 +2,7 @@
 {% block content %}
 
 <div class="container" style="margin-top: 0.5rem;">
-    <h2>Edit Device Router</h2>
+    <h2>Edit Device Switch Layer2</h2>
 
     {% with messages = get_flashed_messages() %}
         {% if messages %}
@@ -76,7 +76,7 @@
         <div class="row g-3 align-items-center" style="margin: 1.5px;">
             <div class="col-auto">
                 <button type="submit" class="btn btn-primary">Update Device</button>
-                <a href="{{ url_for('router_device') }}" class="btn btn-secondary">Cancel</a>
+                <a href="{{ url_for('sl2_device') }}" class="btn btn-secondary">Cancel</a>
             </div>
         </div>
     </form>

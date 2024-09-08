@@ -12,7 +12,7 @@
         {% endfor %}
     {% endif %}
     {% endwith %}
-    <form action="/add/device/router" method="POST">
+    <form action="{{ url_for('add_device_sl2devices') }}" method="POST">
         <div class="mb-3">
             <label for="device_type" class="form-label">Device Type:</label>
             <select id="device_type" name="device_type" class="form-select" aria-label="Select Device Type" required>

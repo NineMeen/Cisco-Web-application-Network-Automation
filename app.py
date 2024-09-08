@@ -8,6 +8,7 @@ from logger import log_event
 import datetime
 from io import BytesIO
 import re
+from collections import defaultdict
 
 app = Flask(__name__)
 app.secret_key = 'takta@1234'
@@ -97,13 +98,6 @@ def main():
     else:
         return redirect(url_for('login'))
 
-@app.route('/router_ip_config',methods=['GET','POST'])
-def router_ip_config():
-    if 'logged_in' in session:
-        return render_template('router_ip_config.html')
-    else:
-        return redirect(url_for('login'))
-
 @app.route('/router/device', defaults={'page': 1})
 @app.route('/router/device/<int:page>')
 def router_device(page):
@@ -119,6 +113,42 @@ def router_device(page):
         paginated_router_device = all_router_device[offset:offset + per_page]
 
         return render_template('router_devices.html', router_device=paginated_router_device, page=page, per_page=per_page, total_pages=(len(all_router_device) + per_page - 1) // per_page)
+    else:
+        return redirect(url_for('login'))
+    
+@app.route('/switchlayer2/device', defaults={'page': 1})
+@app.route('/switchlayer2/device/<int:page>')
+def sl2_device(page):
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM sl2_device")
+        all_sl2_device = c.fetchall()
+        conn.close()
+
+        per_page = 10
+        offset = (page - 1) * per_page
+        paginated_sl2_device = all_sl2_device[offset:offset + per_page]
+
+        return render_template('sl2_devices.html', sl2_device=paginated_sl2_device, page=page, per_page=per_page, total_pages=(len(all_sl2_device) + per_page - 1) // per_page)
+    else:
+        return redirect(url_for('login'))
+    
+@app.route('/switchlayer3/device', defaults={'page': 1})
+@app.route('/switchlayer3/device/<int:page>')
+def sl3_device(page):
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM sl3_device")
+        all_sl3_device = c.fetchall()
+        conn.close()
+
+        per_page = 10
+        offset = (page - 1) * per_page
+        paginated_sl3_device = all_sl3_device[offset:offset + per_page]
+
+        return render_template('sl3_devices.html', router_device=paginated_sl3_device, page=page, per_page=per_page, total_pages=(len(all_sl3_device) + per_page - 1) // per_page)
     else:
         return redirect(url_for('login'))
 
@@ -162,11 +192,103 @@ def add_device_router():
                        )
             conn.commit()
             conn.close()
-            log_event(f"Device created: {hostname} ({ip_address})", session.get('username'))
+            log_event(f"Router Device created: {hostname} ({ip_address})", session.get('username'))
             return redirect(url_for('router_device'))
         return render_template('router_add_devices.html')
     else:
         return redirect(url_for('login'))
+
+@app.route('/add/device/swichlayer2',methods=['GET','POST'])
+def add_device_sl2devices():
+    page = int(request.args.get('page', 1))
+    if 'logged_in' in session:
+        if request.method == 'POST':
+            device_type = request.form['device_type']
+            ip_address = request.form['ip_address']
+            user = request.form['user']
+            password = request.form['password']
+            secret_password = request.form['secret_password']
+            hostname = request.form['hostname']
+
+            conn = sqlite3.connect('device.db')
+            c = conn.cursor()
+            
+            # Check if device already exists
+            c.execute("SELECT * FROM sl2_device WHERE hostname=? AND ip_address=? AND user=?", (hostname, ip_address, user))
+            existing_device = c.fetchone()
+            if existing_device:
+                flash('Device data already exists in the database')
+                # username = session.get('username')
+                log_event('Device creation failed (duplicate)',session.get('username'))
+                return render_template('sl2_add_devices.html')
+
+            now = datetime.datetime.now()
+            date_add = now.strftime("%d-%m-%Y %H:%M:%S")
+            c.execute(
+                "INSERT INTO sl2_device (device_type, ip_address, user, password, secret_password, hostname, date_add) VALUES (?,?,?,?,?,?,?)", 
+                      (device_type, 
+                       ip_address, 
+                       user, 
+                       password, 
+                       secret_password, 
+                       hostname, 
+                       date_add,
+                       ),
+                       )
+            conn.commit()
+            conn.close()
+            log_event(f"Switch L2 Device created: {hostname} ({ip_address})", session.get('username'))
+            return redirect(url_for('sl2_device'))
+        return render_template('sl2_add_devices.html')
+    else:
+        return redirect(url_for('login'))
+
+
+@app.route('/add/device/switchlayer3',methods=['GET','POST'])
+def add_device_sl3devices():
+    page = int(request.args.get('page', 1))
+    if 'logged_in' in session:
+        if request.method == 'POST':
+            device_type = request.form['device_type']
+            ip_address = request.form['ip_address']
+            user = request.form['user']
+            password = request.form['password']
+            secret_password = request.form['secret_password']
+            hostname = request.form['hostname']
+
+            conn = sqlite3.connect('device.db')
+            c = conn.cursor()
+            
+            # Check if device already exists
+            c.execute("SELECT * FROM sl3_device WHERE hostname=? AND ip_address=? AND user=?", (hostname, ip_address, user))
+            existing_device = c.fetchone()
+            if existing_device:
+                flash('Device data already exists in the database')
+                # username = session.get('username')
+                log_event('Device creation failed (duplicate)',session.get('username'))
+                return render_template('sl3_add_devices.html')
+
+            now = datetime.datetime.now()
+            date_add = now.strftime("%d-%m-%Y %H:%M:%S")
+            c.execute(
+                "INSERT INTO sl2_device (device_type, ip_address, user, password, secret_password, hostname, date_add) VALUES (?,?,?,?,?,?,?)", 
+                      (device_type, 
+                       ip_address, 
+                       user, 
+                       password, 
+                       secret_password, 
+                       hostname, 
+                       date_add,
+                       ),
+                       )
+            conn.commit()
+            conn.close()
+            log_event(f"Switch L3 Device created: {hostname} ({ip_address})", session.get('username'))
+            return redirect(url_for('router_device'))
+        return render_template('sl2_add_devices.html')
+    else:
+        return redirect(url_for('login'))
+
 
 @app.route('/edit/device/router/<int:id>', methods=['GET', 'POST'])
 def edit_device_router(id):
@@ -202,6 +324,74 @@ def edit_device_router(id):
     else:
         return redirect(url_for('login'))
 
+@app.route('/edit/device/switchlayer2/<int:id>', methods=['GET', 'POST'])
+def edit_device_sl2(id):
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        c = conn.cursor()
+        
+        if request.method == 'POST':
+            device_type = request.form['device_type']
+            ip_address = request.form['ip_address']
+            user = request.form['user']
+            password = request.form['password']
+            secret_password = request.form['secret_password']
+            hostname = request.form['hostname']
+            
+            c.execute("""UPDATE sl2_device 
+                         SET device_type=?, ip_address=?, user=?, password=?, secret_password=?, hostname=? 
+                         WHERE id=?""", 
+                      (device_type, ip_address, user, password, secret_password, hostname, id))
+            conn.commit()
+            flash('Device updated successfully')
+            return redirect(url_for('sl2_device'))
+        
+        c.execute("SELECT * FROM sl2_device WHERE id=?", (id,))
+        device = c.fetchone()
+        conn.close()
+        
+        if device:
+            return render_template('edit_device_sl2.html', device=device)
+        else:
+            flash('Device not found')
+            return redirect(url_for('sl2_device'))
+    else:
+        return redirect(url_for('login'))
+    
+@app.route('/edit/device/switchlayer3/<int:id>', methods=['GET', 'POST'])
+def edit_device_sl3(id):
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        c = conn.cursor()
+        
+        if request.method == 'POST':
+            device_type = request.form['device_type']
+            ip_address = request.form['ip_address']
+            user = request.form['user']
+            password = request.form['password']
+            secret_password = request.form['secret_password']
+            hostname = request.form['hostname']
+            
+            c.execute("""UPDATE sl3_device 
+                         SET device_type=?, ip_address=?, user=?, password=?, secret_password=?, hostname=? 
+                         WHERE id=?""", 
+                      (device_type, ip_address, user, password, secret_password, hostname, id))
+            conn.commit()
+            flash('Device updated successfully')
+            return redirect(url_for('sl3_device'))
+        
+        c.execute("SELECT * FROM sl3_device WHERE id=?", (id,))
+        device = c.fetchone()
+        conn.close()
+        
+        if device:
+            return render_template('edit_device_sl3.html', device=device)
+        else:
+            flash('Device not found')
+            return redirect(url_for('sl3_device'))
+    else:
+        return redirect(url_for('login'))
+
 @app.route('/devices/delete/<int:id>', methods=['GET', 'POST'])
 def delete_device(id):
     if request.method == 'POST':
@@ -234,35 +424,6 @@ def dhcp_create():
     else:
         return redirect(url_for('login'))
 
-
-@app.route('/ssh_connect', methods=['GET','POST'])
-def ssh_connect():
-    if request.method == 'POST':
-        device_ip = request.form['device_ip']
-        username = request.form['username']
-        password = request.form['password']
-        secret_pass = request.form.get('secret_pass')  # Use get() to handle missing field
-        command = request.form['command']
-
-        # Netmiko script for Linux using SSH key authentication
-        device = {
-            'device_type': 'cisco_ios',
-            'ip': device_ip,
-            'username': username,
-            'password': password,
-            'secret': secret_pass,
-            'port': '22',
-        }
-        if secret_pass:
-            device['secret'] = secret_pass  # Add secret only if provided
-
-        try:
-            with ConnectHandler(**device) as net_connect:
-                output = net_connect.send_command(command)
-        except Exception as e:
-            output = f"Error: {str(e)}"
-
-        return render_template('result.html', output=output)
 
 @app.route('/backup_config/<string:id>', methods=['GET'])
 def backup_config(id):
@@ -308,19 +469,13 @@ def backup_config(id):
         output = f"Error: {str(e)}"
         return render_template('result.html', output=output)
 
-def get_devices():
-    conn = sqlite3.connect('device.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, hostname, ip_address FROM router_device")  # Adjust query as needed
-    devices = cursor.fetchall()
-    conn.close()
-    return devices
-
-def get_acl_rules(device_id):
+@app.route('/get_acl_rules', methods=['GET'])
+def get_acl_rules():
+    device_id = request.args.get('device_id')
     device_info = get_device_info(device_id)
     if not device_info:
-        return []
-    
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
     device = {
         'device_type': device_info['device_type'],
         'ip': device_info['ip'],
@@ -328,57 +483,130 @@ def get_acl_rules(device_id):
         'password': device_info['password'],
         'port': 22,
     }
-    
+
     try:
         with ConnectHandler(**device) as net_connect:
             net_connect.enable()
             output = net_connect.send_command('show ip access-lists')
+
+        rules = parse_acl_rules(output)
         
-        rules = []
-        current_acl = None
-        
-        for line in output.split('\n'):
-            line = line.strip()
-            if 'IP access list' in line:
-                current_acl = line.split('list')[1].strip()
-            elif line and line[0].isdigit():
-                parts = line.split()
-                rule = {
-                    'acl_name': current_acl,
-                    'sequence': parts[0],
-                    'action': parts[1],
-                    'protocol': parts[2],
-                    'source_ip': 'any',
-                    'destination_ip': 'any'
-                }
-                
-                # Parse source IP
-                src_index = 3
-                if parts[src_index] == 'any':
-                    rule['source_ip'] = 'any'
-                    src_index += 1
-                elif parts[src_index] == 'host':
-                    rule['source_ip'] = parts[src_index + 1]
-                    src_index += 2
-                else:
-                    rule['source_ip'] = f"{parts[src_index]} {parts[src_index + 1]}"
-                    src_index += 2
-                
-                # Parse destination IP
-                if src_index < len(parts):
-                    if parts[src_index] == 'any':
-                        rule['destination_ip'] = 'any'
-                    elif parts[src_index] == 'host':
-                        rule['destination_ip'] = parts[src_index + 1]
-                    else:
-                        rule['destination_ip'] = f"{parts[src_index]} {parts[src_index + 1]}"
-                
-                rules.append(rule)
-        
-        return rules
+        # Group rules by ACL name
+        acl_groups = defaultdict(list)
+        for rule in rules:
+            acl_groups[rule['acl_name']].append(rule)
+
+        return jsonify({'status': 'success', 'acl_groups': dict(acl_groups)})
     except Exception as e:
-        print(f"Error fetching ACL rules: {str(e)}")
-        return []
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/move_rule', methods=['POST'])
+def move_rule():
+    device_id = request.form['device_id']
+    acl_name = request.form['acl_name']
+    sequence = request.form['sequence']
+    direction = request.form['direction']
+
+    device_info = get_device_info(device_id)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            
+            # Get all rules for the ACL
+            output = net_connect.send_command(f'show ip access-lists {acl_name}')
+            rules = parse_acl_rules(output)
+            
+            # Find the current rule and its neighbors
+            current_rule_index = next((i for i, rule in enumerate(rules) if rule['sequence'] == sequence), None)
+            if current_rule_index is None:
+                return jsonify({'status': 'error', 'message': 'Rule not found'})
+
+            if direction == 'up' and current_rule_index > 0:
+                swap_index = current_rule_index - 1
+            elif direction == 'down' and current_rule_index < len(rules) - 1:
+                swap_index = current_rule_index + 1
+            else:
+                return jsonify({'status': 'success', 'message': 'No change needed'})
+            
+            # Swap the sequences
+            current_rule = rules[current_rule_index]
+            swap_rule = rules[swap_index]
+            
+            commands = [
+                f"ip access-list extended {acl_name}",
+                f"no {current_rule['sequence']}",
+                f"no {swap_rule['sequence']}",
+                f"{swap_rule['sequence']} {current_rule['rule']}",
+                f"{current_rule['sequence']} {swap_rule['rule']}"
+            ]
+            
+            # Send commands to the device
+            output = net_connect.send_config_set(commands)
+            
+            # Fetch updated rules
+            output = net_connect.send_command(f'show ip access-lists {acl_name}')
+            updated_rules = parse_acl_rules(output)
+            
+        return jsonify({'status': 'success', 'message': 'Rule moved successfully', 'updated_rules': updated_rules})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+
+def parse_acl_rules(output):
+    rules = []
+    current_acl = None
+
+    for line in output.split('\n'):
+        line = line.strip()
+        if 'IP access list' in line:
+            current_acl = line.split('list')[1].strip()
+        elif line and line[0].isdigit():
+            parts = line.split()
+            rule = {
+                'acl_name': current_acl,
+                'sequence': parts[0],
+                'action': parts[1],
+                'protocol': parts[2],
+                'source_ip': 'any',
+                'destination_ip': 'any',
+                'rule': ' '.join(parts[1:])  # Store the full rule
+            }
+
+            # Parse source IP
+            src_index = 3
+            if parts[src_index] == 'any':
+                rule['source_ip'] = 'any'
+                src_index += 1
+            elif parts[src_index] == 'host':
+                rule['source_ip'] = parts[src_index + 1]
+                src_index += 2
+            else:
+                rule['source_ip'] = f"{parts[src_index]} {parts[src_index + 1]}"
+                src_index += 2
+
+            # Parse destination IP
+            if src_index < len(parts):
+                if parts[src_index] == 'any':
+                    rule['destination_ip'] = 'any'
+                elif parts[src_index] == 'host':
+                    rule['destination_ip'] = parts[src_index + 1]
+                else:
+                    rule['destination_ip'] = f"{parts[src_index]} {parts[src_index + 1]}"
+
+            rules.append(rule)
+
+    return rules
 
 @app.route('/router_acl_config', methods=['GET', 'POST'])
 def router_acl_config():
@@ -433,6 +661,7 @@ def router_acl_config():
             return jsonify({'status': 'error', 'message': "Device not found"})
 
 
+
 @app.route('/delete_acl_rule', methods=['POST'])
 def delete_acl_rule():
     device_id = request.form['device_id']
@@ -458,8 +687,14 @@ def delete_acl_rule():
                 f"ip access-list extended {acl_name}",
                 f"no {sequence}"
             ]
+            # Send commands to the device
             output = net_connect.send_config_set(commands)
-            return jsonify({'status': 'success', 'message': f"ACL rule {sequence} deleted from {acl_name}"})
+            
+            # Fetch updated rules after deletion
+            output = net_connect.send_command(f'show ip access-lists {acl_name}')
+            updated_rules = parse_acl_rules(output)
+            
+        return jsonify({'status': 'success', 'message': 'Rule deleted successfully', 'updated_rules': updated_rules})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
