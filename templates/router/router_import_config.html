@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Import Backup Configuration</h2>
+    <form id="importBackupForm" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label for="device_id" class="form-label">Select Device</label>
+            <select class="form-select" id="device_id" name="device_id" required>
+                {% for device in devices %}
+                    <option value="{{ device[0] }}">{{ device[1] }} ({{ device[2] }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="backupFile" class="form-label">Select Backup File</label>
+            <input type="file" class="form-control" id="backupFile" name="backupFile" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Import Backup</button>
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const importBackupForm = document.getElementById('importBackupForm');
+    
+    importBackupForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.append('device_p', 'router_device');
+        fetch('/import_backup', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Backup imported successfully');
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while importing the backup');
+        });
+    });
+});
+</script>
+{% endblock %}

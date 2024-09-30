@@ -2,7 +2,7 @@ import math
 from flask import Flask, render_template, request, session, redirect, url_for, flash, send_file, jsonify
 from flask_socketio import SocketIO, emit
 from flask_paginate import Pagination, get_page_args
-from netmiko import ConnectHandler
+from netmiko import ConnectHandler 
 import sqlite3
 from logger import log_event
 import datetime
@@ -24,20 +24,50 @@ conn.close()
 
 
 
-def get_device_info(device_id):
+# def get_device_info(device_id):
+#     conn = sqlite3.connect('device.db')
+#     cursor = conn.cursor()
+#     cursor.execute("SELECT device_type, ip_address, user, password FROM router_device WHERE id=?", (device_id,))
+#     device_info = cursor.fetchone()
+#     conn.close()
+#     if device_info:
+#         return {
+#             'device_type': 'cisco_ios',
+#             'ip': device_info[1],
+#             'username': device_info[2],
+#             'password': device_info[3],
+#         }
+#     return None
+
+def get_device_info(device_id, device_p):
     conn = sqlite3.connect('device.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT device_type, ip_address, user, password FROM router_device WHERE id=?", (device_id,))
+    
+    table_name = {
+        'router_device': 'router_device',
+        'sl2_device': 'sl2_device',
+        'sl3_device': 'sl3_device'
+    }.get(device_p)
+    
+    if not table_name:
+        conn.close()
+        return None  # Invalid device_p value
+    
+    cursor.execute(f"SELECT device_type, ip_address, user, password, secret_password FROM {table_name} WHERE id=?", (device_id,))
     device_info = cursor.fetchone()
     conn.close()
+    
     if device_info:
         return {
-            'device_type': device_info[0],
+            'device_type': 'cisco_ios',  # Assuming all devices use cisco_ios
             'ip': device_info[1],
             'username': device_info[2],
             'password': device_info[3],
+            'secret': device_info[4]
         }
     return None
+
+
 
 
 @app.route('/')
@@ -158,7 +188,8 @@ def add_device_router():
     page = int(request.args.get('page', 1))
     if 'logged_in' in session:
         if request.method == 'POST':
-            device_type = request.form['device_type']
+            device_p = request.form['device_p']
+            device_type = 'cisco_ios'
             ip_address = request.form['ip_address']
             user = request.form['user']
             password = request.form['password']
@@ -180,7 +211,7 @@ def add_device_router():
             now = datetime.datetime.now()
             date_add = now.strftime("%d-%m-%Y %H:%M:%S")
             c.execute(
-                "INSERT INTO router_device (device_type, ip_address, user, password, secret_password, hostname, date_add) VALUES (?,?,?,?,?,?,?)", 
+                "INSERT INTO router_device (device_type, ip_address, user, password, secret_password, hostname, date_add, device_p) VALUES (?,?,?,?,?,?,?,?)", 
                       (device_type, 
                        ip_address, 
                        user, 
@@ -188,6 +219,7 @@ def add_device_router():
                        secret_password, 
                        hostname, 
                        date_add,
+                       device_p,
                        ),
                        )
             conn.commit()
@@ -203,7 +235,8 @@ def add_device_sl2devices():
     page = int(request.args.get('page', 1))
     if 'logged_in' in session:
         if request.method == 'POST':
-            device_type = request.form['device_type']
+            device_p = request.form['device_type']
+            device_type = 'cisco_ios'
             ip_address = request.form['ip_address']
             user = request.form['user']
             password = request.form['password']
@@ -225,7 +258,7 @@ def add_device_sl2devices():
             now = datetime.datetime.now()
             date_add = now.strftime("%d-%m-%Y %H:%M:%S")
             c.execute(
-                "INSERT INTO sl2_device (device_type, ip_address, user, password, secret_password, hostname, date_add) VALUES (?,?,?,?,?,?,?)", 
+                "INSERT INTO sl2_device (device_type, ip_address, user, password, secret_password, hostname, date_add, device_p) VALUES (?,?,?,?,?,?,?,?)", 
                       (device_type, 
                        ip_address, 
                        user, 
@@ -233,6 +266,7 @@ def add_device_sl2devices():
                        secret_password, 
                        hostname, 
                        date_add,
+                       device_p,
                        ),
                        )
             conn.commit()
@@ -249,7 +283,8 @@ def add_device_sl3devices():
     page = int(request.args.get('page', 1))
     if 'logged_in' in session:
         if request.method == 'POST':
-            device_type = request.form['device_type']
+            device_p = request.form['device_type']
+            device_type = 'cisco_ios'
             ip_address = request.form['ip_address']
             user = request.form['user']
             password = request.form['password']
@@ -271,7 +306,8 @@ def add_device_sl3devices():
             now = datetime.datetime.now()
             date_add = now.strftime("%d-%m-%Y %H:%M:%S")
             c.execute(
-                "INSERT INTO sl2_device (device_type, ip_address, user, password, secret_password, hostname, date_add) VALUES (?,?,?,?,?,?,?)", 
+                "INSERT INTO sl2_device (device_type, ip_address, user, password, secret_password, hostname, date_add,  device_p) VALUES (?,?,?,?,?,?,?,?)", 
+
                       (device_type, 
                        ip_address, 
                        user, 
@@ -279,6 +315,7 @@ def add_device_sl3devices():
                        secret_password, 
                        hostname, 
                        date_add,
+                       device_p,
                        ),
                        )
             conn.commit()
@@ -410,20 +447,6 @@ def delete_device(id):
         return redirect(url_for('router_device'))
     return render_template('router_device.html')
 
-@app.route('/dhcp_create', methods=['GET', 'POST'])
-def dhcp_create():
-    if 'logged_in' in session:
-        if request.method == 'POST':
-            device_ip = request.form['device_ip']
-            username = request.form['username']
-            password = request.form['password']
-            secret_pass = request.form.get('secret_pass')
-            # Process the form data here
-            #...
-        return render_template('dhcp_creat.html')
-    else:
-        return redirect(url_for('login'))
-
 
 @app.route('/backup_config/<string:id>', methods=['GET'])
 def backup_config(id):
@@ -469,36 +492,77 @@ def backup_config(id):
         output = f"Error: {str(e)}"
         return render_template('result.html', output=output)
 
-@app.route('/get_acl_rules', methods=['GET'])
-def get_acl_rules():
-    device_id = request.args.get('device_id')
-    device_info = get_device_info(device_id)
-    if not device_info:
-        return jsonify({'status': 'error', 'message': 'Device not found'})
 
-    device = {
-        'device_type': device_info['device_type'],
-        'ip': device_info['ip'],
-        'username': device_info['username'],
-        'password': device_info['password'],
-        'port': 22,
-    }
+@app.route('/import_backup_page')
+def import_backup_page():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM router_device")
+        devices = cursor.fetchall()
+        conn.close()
+        return render_template('/router/router_import_config.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
 
-    try:
-        with ConnectHandler(**device) as net_connect:
-            net_connect.enable()
-            output = net_connect.send_command('show ip access-lists')
 
-        rules = parse_acl_rules(output)
+ALLOWED_EXTENSIONS = {'txt', 'conf'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/import_backup', methods=['POST'])
+def import_backup():
+    if 'backupFile' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'})
+    
+    file = request.files['backupFile']
+    
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'})
+    
+    if file and allowed_file(file.filename):
+        file_content = file.read().decode('utf-8')
         
-        # Group rules by ACL name
-        acl_groups = defaultdict(list)
-        for rule in rules:
-            acl_groups[rule['acl_name']].append(rule)
-
-        return jsonify({'status': 'success', 'acl_groups': dict(acl_groups)})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
+        device_id = request.form.get('device_id')
+        device_p = request.form.get('device_p')
+        device_info = get_device_info(device_id, device_p)
+        
+        if not device_info:
+            return jsonify({'status': 'error', 'message': 'Device not found'})
+        
+        device = {
+            'device_type': device_info['device_type'],
+            'ip': device_info['ip'],
+            'username': device_info['username'],
+            'password': device_info['password'],
+            'secret': device_info['secret'],
+            'port': 22,
+        }
+        
+        try:
+            with ConnectHandler(**device) as net_connect:
+                net_connect.enable()
+                
+                # Split the configuration into individual commands
+                commands = [line.strip() for line in file_content.splitlines() if line.strip()]
+                
+                # Apply the configuration
+                output = net_connect.send_config_set(commands)
+                
+                # Save the configuration
+                net_connect.save_config()
+                
+            # Log the successful import
+            log_event(f"Backup imported for device: {device_info['ip']}", session.get('username'))
+            
+            return jsonify({'status': 'success', 'message': 'Backup imported successfully'})
+        except Exception as e:
+            # Log the failed import attempt
+            log_event(f"Backup import failed for device: {device_info['ip']}. Error: {str(e)}", session.get('username'))
+            return jsonify({'status': 'error', 'message': str(e)})
+    
+    return jsonify({'status': 'error', 'message': 'Invalid file type'})
 
 @app.route('/move_rule', methods=['POST'])
 def move_rule():
@@ -506,8 +570,8 @@ def move_rule():
     acl_name = request.form['acl_name']
     sequence = request.form['sequence']
     direction = request.form['direction']
-
-    device_info = get_device_info(device_id)
+    device_p = request.form['device_p']
+    device_info = get_device_info(device_id, device_p)
     if not device_info:
         return jsonify({'status': 'error', 'message': 'Device not found'})
 
@@ -563,6 +627,42 @@ def move_rule():
         return jsonify({'status': 'error', 'message': str(e)})
 
 
+@app.route('/get_acl_rules', methods=['GET'])
+def get_acl_rules():
+    device_id = request.args.get('device_id')
+    device_p = request.args.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    
+
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            output = net_connect.send_command('show ip access-lists')
+
+        rules = parse_acl_rules(output)
+        # print(f'{rules}')
+        # Group rules by ACL name
+        acl_groups = defaultdict(list)
+        for rule in rules:
+            acl_groups[rule['acl_name']].append(rule)
+
+        acl_applications = get_acl_applications(device_id, device_p)
+
+        return jsonify({'status': 'success', 'acl_groups': dict(acl_groups)})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
 def parse_acl_rules(output):
     rules = []
     current_acl = None
@@ -608,7 +708,35 @@ def parse_acl_rules(output):
 
     return rules
 
-@app.route('/router_acl_config', methods=['GET', 'POST'])
+def get_acl_applications(device_id, device_p):
+    device_info = get_device_info(device_id, device_p)  # ฟังก์ชันที่มีอยู่แล้วสำหรับดึงข้อมูลอุปกรณ์
+    if not device_info:
+        return []
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            # ดึงข้อมูลการกำหนดค่าทั้งหมด
+            running_config = net_connect.send_command('show running-config')
+
+        # ใช้ฟังก์ชัน parse_acl_applications ที่มีอยู่แล้ว
+        acl_applications = parse_acl_applications(running_config)
+        # print("SHOW ACL NOW")
+        # print(acl_applications)
+        return acl_applications
+
+    except Exception as e:
+        print(f"Error in get_acl_applications: {str(e)}")
+        return []
+
+@app.route('/acl_config', methods=['GET', 'POST'])
 def router_acl_config():
     if 'logged_in' not in session:
         return redirect(url_for('login'))
@@ -618,6 +746,7 @@ def router_acl_config():
     cursor.execute("SELECT id, hostname, ip_address FROM router_device")
     devices = cursor.fetchall()
     conn.close()
+    device_p = request.form.get('device_p')
 
     if request.method == 'GET':
         return render_template('router_acl_config.html', devices=devices)
@@ -653,7 +782,7 @@ def router_acl_config():
         acl_rule = f"{action} {protocol} {source} {destination}"
 
         # ส่ง configuration ไปยังอุปกรณ์
-        device_info = get_device_info(device_id)
+        device_info = get_device_info(device_id, device_p)
         if device_info:
             device = {
                 'device_type': device_info['device_type'],
@@ -665,16 +794,22 @@ def router_acl_config():
             try:
                 with ConnectHandler(**device) as net_connect:
                     net_connect.enable()
+                    interfaces = net_connect.send_command("show ip interface brief")
                     commands = [
                         f"ip access-list extended {acl_name}",
                         acl_rule
                     ]
                     output = net_connect.send_config_set(commands)
-                    return jsonify({'status': 'success', 'message': 'ACL rule added successfully'})
+                    return jsonify({
+                        'status': 'success',
+                        'message': 'ACL rule added successfully',
+                        'interfaces': interfaces
+                    })
             except Exception as e:
                 return jsonify({'status': 'error', 'message': f"Error configuring ACL: {str(e)}"})
         else:
             return jsonify({'status': 'error', 'message': "Device not found"})
+        
         
 def subnet_to_wildcard(subnet):
     subnet_octets = subnet.split('.')
@@ -695,8 +830,8 @@ def edit_acl_rule():
     destination_type = request.form['destination_type']
     destination_ip = request.form['destination_ip']
     destination_wildcard = request.form.get('destination_wildcard', '')
-    
-    device_info = get_device_info(device_id)
+    device_p = request.form.get('device_p')
+    device_info = get_device_info(device_id, device_p)
     if not device_info:
         return jsonify({'status': 'error', 'message': 'Device not found'})
     
@@ -712,29 +847,32 @@ def edit_acl_rule():
     if source_type == 'any':
         source = 'any'
     elif source_type == 'host':
-        source = f"host {source_ip}"
+        source = source_ip  # 'host' prefix is already added in frontend
     else:
-        source = f"{source_ip} {source_wildcard}"
+        wildcard = subnet_to_wildcard(source_wildcard)
+        source = f"{source_ip} {wildcard}"
 
     if destination_type == 'any':
         destination = 'any'
     elif destination_type == 'host':
-        destination = f"host {destination_ip}"
+        destination = destination_ip  # 'host' prefix is already added in frontend
     else:
-        destination = f"{destination_ip} {destination_wildcard}"
-    
+        wildcard = subnet_to_wildcard(destination_wildcard)
+        destination = f"{destination_ip} {wildcard}"
+
+        
     try:
         with ConnectHandler(**device) as net_connect:
             net_connect.enable()
             
             # Check if the rule exists
             show_acl = net_connect.send_command(f'show ip access-list {acl_name}')
-            if f"sequence {sequence}" not in show_acl:
-                return jsonify({'status': 'error', 'message': f'Rule with sequence {sequence} not found in ACL {acl_name}'})
+            # if f"sequence {sequence}" not in show_acl:
+            #     return jsonify({'status': 'error', 'message': f'Rule with sequence {sequence} not found in ACL {acl_name}'})
             
             # Construct the new rule
             new_rule = f"{sequence} {action} {protocol} {source} {destination}"
-            
+            print(f"New rule to be added: {new_rule}")
             commands = [
                 f"ip access-list extended {acl_name}",
                 f"no {sequence}",  # Remove the old rule
@@ -761,8 +899,9 @@ def delete_acl_rule():
     device_id = request.form['device_id']
     acl_name = request.form['acl_name']
     sequence = request.form['sequence']
+    device_p = request.form.get('device_p')
     
-    device_info = get_device_info(device_id)
+    device_info = get_device_info(device_id, device_p)
     if not device_info:
         return jsonify({'status': 'error', 'message': 'Device not found'})
     
@@ -792,15 +931,16 @@ def delete_acl_rule():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/delete_acl', methods=['POST'])
-def delete_acl():
-    device_id = request.form['device_id']
-    acl_name = request.form['acl_name']
+
+@app.route('/get_interfaces', methods=['GET'])
+def get_interfaces():
+    device_id = request.args.get('device_id')
+    device_p = request.args.get('device_p')
+    device_info = get_device_info(device_id, device_p)
     
-    device_info = get_device_info(device_id)
     if not device_info:
         return jsonify({'status': 'error', 'message': 'Device not found'})
-    
+
     device = {
         'device_type': device_info['device_type'],
         'ip': device_info['ip'],
@@ -808,23 +948,474 @@ def delete_acl():
         'password': device_info['password'],
         'port': 22,
     }
-    
+
     try:
         with ConnectHandler(**device) as net_connect:
             net_connect.enable()
-            commands = [f"no ip access-list extended {acl_name}"]
+            output = net_connect.send_command('show ip interface brief')
+            config = net_connect.send_command('show running-config')
+            acl_output = net_connect.send_command('show ip access-lists')
+
+        # print("Raw interfaces output:")
+        # print(output)
+
+        # print("Raw ACL output:")
+        # print(acl_output)
+
+        interfaces = parse_interfaces(output)
+        acl_applications = parse_acl_applications(config)
+        acl_rules = parse_acl_rules(acl_output)
+
+        return jsonify({
+            'status': 'success',
+            'interfaces': interfaces,
+            'acl_applications': acl_applications,
+            'acl_rules': acl_rules
+        })
+    except Exception as e:
+        print(f"Error in get_interfaces: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)})
+
+def parse_interfaces(output):
+    interfaces = []
+    lines = output.strip().split('\n')
+    
+    # Find the header line
+    header_index = next((i for i, line in enumerate(lines) if 'Interface' in line), 0)
+    
+    for line in lines[header_index + 1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            interface = {
+                'name': parts[0],
+                'ip_address': parts[1] if parts[1] != 'unassigned' else '',
+                'status': parts[-1] if len(parts) > 4 else 'unknown'
+            }
+            interfaces.append(interface)
+    
+    return interfaces
+
+def parse_acl_applications(config):
+    acl_applications = []
+    current_interface = None
+
+    for line in config.split('\n'):
+        line = line.strip()
+        # print(f"Processing line: {line}")  # Print each line for debugging
+        if line.startswith('interface'):
+            current_interface = line.split()[1]
+            # print(f"Current interface: {current_interface}")
+        elif current_interface and 'access-group' in line:
+            parts = line.split()
+            if len(parts) >= 4 and parts[0] == 'ip':
+                parts = parts[1:]  # Remove 'ip' if present
+            if len(parts) >= 3 and parts[0] == 'access-group':
+                acl_application = {
+                    'interface': current_interface,
+                    'acl_name': parts[1],
+                    'direction': parts[2]
+                }
+                acl_applications.append(acl_application)
+                # print(f"ACL application found: {acl_application}")
+        elif line == '!':
+            if current_interface:
+                # print(f"End of interface {current_interface} configuration")
+                current_interface = None
+
+    # print(f"Total ACL applications found: {len(acl_applications)}")
+    return acl_applications
+@app.route('/apply_acl', methods=['POST'])
+def apply_acl():
+    device_id = request.form['device_id']
+    interface = request.form['interface']
+    acl_name = request.form['acl_name']
+    direction = request.form['direction']
+    device_p = request.form.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [
+                f"interface {interface}",
+                f"ip access-group {acl_name} {direction}"
+            ]
             output = net_connect.send_config_set(commands)
-            return jsonify({'status': 'success', 'message': f"ACL {acl_name} deleted"})
+            
+            # Verify the application
+            running_config = net_connect.send_command('show running-config')
+            acl_applications = parse_acl_applications(running_config)
+            
+        return jsonify({
+            'status': 'success',
+            'message': f'ACL {acl_name} applied to {interface} in {direction} direction',
+            'acl_applications': acl_applications
+        })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/show_rules', methods=['GET'])
-def show_rules():
-    device_id = request.args.get('device_id')
-    rules = get_acl_rules(device_id)
-    return jsonify({'status': 'success', 'rules': rules})
-    
+@app.route('/delete_applied_acl', methods=['POST'])
+def delete_applied_acl():
+    device_id = request.form.get('device_id')
+    interface = request.form.get('interface')
+    acl_name = request.form.get('acl_name')
+    direction = request.form.get('direction')
+    device_p = request.form.get('device_p')
 
+    # Fetch device details from the database
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'}), 404
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info.get('secret'),  # Add this if your devices use enable secret
+        'port': 22,  # Change if your SSH port is different
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()  # Enter enable mode if required
+
+            # Commands to remove the ACL from the interface
+            commands = [
+                f'interface {interface}',
+                f'no ip access-group {acl_name} {direction}'
+            ]
+
+            # Send commands to the device
+            output = net_connect.send_config_set(commands)
+
+            # Check if the command was successful
+            if "Invalid input detected" in output or "% " in output:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Error removing ACL: {output}'
+                }), 400
+
+            # Save the configuration
+            net_connect.save_config()
+
+            return jsonify({
+                'status': 'success',
+                'message': f'ACL {acl_name} removed from {interface} ({direction})'
+            })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'An error occurred while removing the ACL: {str(e)}'
+        }), 500
+
+
+#################### DHCP ###########################################################
+
+@app.route('/get_devices')
+def get_devices():
+    conn = sqlite3.connect('device.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, hostname, ip_address FROM router_device")
+    devices = [{'id': row[0], 'hostname': row[1], 'ip_address': row[2]} for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({'devices': devices})
+
+@app.route('/dhcp/create',methods=['GET','POST'])
+def dhcp_pool():
+    if 'logged_in' in session:
+        return render_template('dhcp_creat.html')
+    
+    conn = sqlite3.connect('device.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, hostname, ip_address FROM router_device")
+    devices = cursor.fetchall()
+    conn.close()
+    # device_p = 'router_device'
+    
+    if request.method == 'GET':
+        return render_template('dhcp_creat.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+
+
+@app.route('/create_dhcp_pool', methods=['POST'])
+def create_dhcp_pool():
+    device_id = request.form['device_id']
+    pool_name = request.form['poolName']
+    network_address = request.form['networkAddress']
+    subnet_mask = request.form['subnetMask']
+    default_router = request.form['defaultRouter']
+    dns_server = request.form['dnsServer']
+    domain_name = request.form['domainName']
+    lease_time = request.form['leaseTime']
+    excluded_addresses = request.form.getlist('excludedAddresses[]')  # Change this line  # Assuming this is sent as an array
+    device_p = request.form.get('device_p')
+
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [
+                f'ip dhcp pool {pool_name}',
+                f'network {network_address} {subnet_mask}',
+                f'default-router {default_router}',
+                f'dns-server {dns_server}',
+                f'domain-name {domain_name}',
+                f'lease {lease_time}'
+            ]
+            if excluded_addresses:
+                for address in excluded_addresses:
+                    if '-' in address:  # Range of addresses
+                        start, end = address.split('-')
+                        commands.append(f'ip dhcp excluded-address {start.strip()} {end.strip()}')
+                    else:  # Single address
+                        commands.append(f'ip dhcp excluded-address {address.strip()}')
+
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+        return jsonify({'status': 'success', 'message': 'DHCP pool created successfully'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/get_dhcp_pools', methods=['GET'])
+def get_dhcp_pools():
+    device_id = request.args.get('device_id')
+    device_p = request.args.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            output = net_connect.send_command('show running-config | section ip dhcp pool')
+            excluded_output = net_connect.send_command('show running-config | section ip dhcp excluded-address')
+        pools = parse_dhcp_pools(output)
+        excluded = parse_excluded_addresses(excluded_output)
+        print(pools)
+        print(excluded_output)
+        print(excluded)
+        for pool in pools:
+            pool['excluded_addresses'] = [
+                f"{item['start']} - {item['end']}" if 'start' in item else item['address']
+                for item in excluded
+            ]
+        
+        return jsonify({'status': 'success', 'pools': pools, 'excluded': excluded})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/delete_dhcp_pool', methods=['POST'])
+def delete_dhcp_pool():
+    data = request.json
+    device_id = data['device_id']
+    pool_name = data['pool_name']
+
+    device_info = get_device_info(device_id, 'router_device')
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [f'no ip dhcp pool {pool_name}']
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+        return jsonify({'status': 'success', 'message': 'DHCP pool deleted successfully'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+def parse_dhcp_pools(config_output):
+    pools = []
+    current_pool = None
+    for line in config_output.split('\n'):
+        line = line.strip()
+        if line.startswith('ip dhcp pool'):
+            if current_pool:
+                pools.append(current_pool)
+            current_pool = {'name': line.split()[-1], 'network': '', 'subnet': '', 'default_router': '', 'dns_server': '', 'domain_name': '', 'lease_time': ''}
+        elif current_pool:
+            if line.startswith('network'):
+                parts = line.split()
+                current_pool['network'] = parts[1]
+                current_pool['subnet'] = parts[2]
+            elif line.startswith('default-router'):
+                current_pool['default_router'] = line.split()[-1]
+            elif line.startswith('dns-server'):
+                current_pool['dns_server'] = line.split()[-1]
+            elif line.startswith('domain-name'):
+                current_pool['domain_name'] = line.split()[-1]
+            elif line.startswith('lease'):
+                current_pool['lease_time'] = ' '.join(line.split()[1:])
+    if current_pool:
+        pools.append(current_pool)
+    return pools
+
+def parse_excluded_addresses(excluded_output):
+    excluded = []
+    for line in excluded_output.split('\n'):
+        line = line.strip()
+        if line.startswith('ip dhcp excluded-address'):
+            parts = line.split()[3:]  # Skip 'ip dhcp excluded-address'
+            if len(parts) == 2:
+                excluded.append({'start': parts[0], 'end': parts[1]})
+            elif len(parts) == 1:
+                excluded.append({'address': parts[0]})
+    return excluded
+
+@app.route('/edit_dhcp_pool', methods=['POST'])
+def edit_dhcp_pool():
+    device_id = request.form['device_id']
+    old_pool_name = request.form.get('old_pool_name')  # Use .get() method
+    pool_name = request.form['poolName']
+    network_address = request.form['networkAddress']
+    subnet_mask = request.form['subnetMask']
+    default_router = request.form['defaultRouter']
+    dns_server = request.form['dnsServer']
+    domain_name = request.form['domainName']
+    lease_time = request.form['leaseTime']
+    excluded_addresses = request.form.getlist('excludedAddresses[]')
+    device_p = request.form.get('device_p', 'router_device')
+
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            
+            # Remove the old DHCP pool
+            commands = [f'no ip dhcp pool {old_pool_name}']
+            net_connect.send_config_set(commands)
+
+            # Create the new DHCP pool
+            commands = [
+                f'ip dhcp pool {pool_name}',
+                f'network {network_address} {subnet_mask}',
+                f'default-router {default_router}',
+                f'dns-server {dns_server}',
+                f'domain-name {domain_name}',
+                f'lease {lease_time}'
+            ]
+
+            if excluded_addresses:
+                no_ip_dhcp_excluded_address = net_connect.send_command('show run | include ip dhcp excluded-address')
+                for line in no_ip_dhcp_excluded_address.splitlines():
+                    if line.strip().startswith('ip dhcp excluded-address'):
+                        commands.append(f'no {line.strip()}')
+                for address in excluded_addresses:
+                    if '-' in address:  # Range of addresses
+                        start, end = address.split('-')
+                        commands.append(f'ip dhcp excluded-address {start.strip()} {end.strip()}')
+                    else:  # Single address
+                        commands.append(f'ip dhcp excluded-address {address.strip()}')
+
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+
+            # Verify the changes
+            new_config = net_connect.send_command('show run | section ip dhcp pool')
+            new_excluded = net_connect.send_command('show run | include ip dhcp excluded-address')
+            
+            updated_pool = parse_dhcp_pools(new_config)
+            updated_excluded = parse_excluded_addresses(new_excluded)
+
+        return jsonify({
+            'status': 'success', 
+            'message': 'DHCP pool updated successfully',
+            'updated_pool': updated_pool,
+            'updated_excluded': updated_excluded
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+
+@app.route('/delete_excluded_address', methods=['POST'])
+def delete_excluded_address():
+    data = request.json
+    device_id = data['device_id']
+    excluded_address = data['excluded_address']
+    device_p = data.get('device_p', 'router_device')
+
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            if ' - ' in excluded_address:
+                start, end = excluded_address.split(' - ')
+                command = f'no ip dhcp excluded-address {start.strip()} {end.strip()}'
+            else:
+                command = f'no ip dhcp excluded-address {excluded_address}'
+            output = net_connect.send_config_set([command])
+            net_connect.save_config()
+
+        return jsonify({'status': 'success', 'message': 'Excluded address deleted successfully'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True)

@@ -1,45 +1,496 @@
 {% extends "base.html" %}
 {% block content %}
-        <div class="container">
-            <h1>DHCP Pool Create </h1>
-            <form action="/configure_acl" method="post">
-                <input type="text" name="device_ip" placeholder="Device IP" class="form-control mb-2">
-                <input type="text" name="dhcp_pool_name" placeholder="DHCP Pool Name" class="form-control mb-2">
-                <input type="text" name="dhcp_network" placeholder="DHCP Network" class="form-control mb-2">
-                <input type="text" name="dhcp_subnet" placeholder="DHCP Subnet" class="form-control mb-2">
-                <input type="text" name="dhcp_gateway" placeholder="DHCP Gateway" class="form-control mb-2">
-                <input type="text" name="dhcp_dns" placeholder="DHCP DNS" class="form-control mb-2">
-                <input type="text" name="dhcp_lease" placeholder="DHCP Lease" class="form-control mb-2">
-                <input type="submit" value="Create DHCP Pool" class="btn btn-primary">
-            </form>
-    
-            {% if output %}
-            <!-- Modal -->
-            <div class="modal fade" id="outputModal" tabindex="-1" role="dialog" aria-labelledby="outputModalLabel" aria-hidden="true">
-                <div class="modal-dialog" role="document">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="outputModalLabel">Configuration Result</h5>
-                            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                                <span aria-hidden="true">&times;</span>
-                            </button>
-                        </div>
-                        <div class="modal-body">
-                            <pre>{{ output }}</pre>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <script>
-                var outputLines = `{{ output | e }}`.split('\n').slice(0, 10).join('\n');
-                alert(outputLines);
-            </script>
-            {% endif %}
+<style>
+    #excludedAddressesList {
+        margin-top: 20px;
+    }
+    .excluded-address-item {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    .excluded-address-item span {
+        font-weight: bold;
+    }
+</style>
+<div class="container mt-4">
+    <h2>Create DHCP Pool</h2>
+    <form id="dhcpForm">
+        <div class="mb-3">
+            <label for="device_id" class="form-label">Select Device</label>
+            <select class="form-select" id="device_id" name="device_id" required>
+                {% for device in devices %}
+                    <option value="{{ device[0] }}">{{ device[1] }} ({{ device[2] }})</option>
+                {% endfor %}
+            </select>
         </div>
-    </main>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-{% endblock content %}
+        <div class="mb-3">
+            <label for="poolName" class="form-label">Pool Name</label>
+            <input type="text" name="poolName" class="form-control" id="poolName" required>
+        </div>
+        <div class="mb-3">
+            <label for="networkAddress" class="form-label">Network Address</label>
+            <input type="text" name="networkAddress" class="form-control" id="networkAddress" placeholder="e.g. 192.168.1.0" required>
+        </div>
+        <div class="mb-3">
+            <label for="subnetMask" class="form-label">Subnet Mask</label>
+            <input type="text" name="subnetMask" class="form-control" id="subnetMask" placeholder="e.g. 255.255.255.0" required>
+        </div>
+        <div class="mb-3">
+            <label for="defaultRouter" class="form-label">Default Router</label>
+            <input type="text" name="defaultRouter" class="form-control" id="defaultRouter" placeholder="e.g. 192.168.1.1">
+        </div>
+        <div class="mb-3">
+            <label for="dnsServer" class="form-label">DNS Server</label>
+            <input type="text" name="dnsServer" class="form-control" id="dnsServer" placeholder="e.g. 8.8.8.8">
+        </div>
+        <div class="mb-3">
+            <label for="domainName" class="form-label">Domain Name</label>
+            <input type="text" name="domainName" class="form-control" id="domainName" placeholder="e.g. example.com">
+        </div>
+        <div class="mb-3">
+            <label for="leaseTime" class="form-label">Lease Time (days)</label>
+            <input type="number" name="leaseTime" class="form-control" id="leaseTime" placeholder="e.g. 7">
+        </div>
+        <div class="mb-3">
+            <label for="excludedAddresses" class="form-label">Excluded Addresses (one per space)</label>
+            <textarea class="form-control" id="excludedAddresses" name="excludedAddresses" rows="3" placeholder="e.g. 192.168.1.1 192.168.1.100"    ></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Create DHCP Pool</button>
+    </form>
+</div>
+
+<div class="container mt-4">
+    <h2>Existing DHCP Pools</h2>
+    <div id="dhcpPoolList">
+        <!-- DHCP pools will be listed here -->
+    </div>
+</div>
+
+<div class="container mt-4">
+    <h2>Excluded Addresses</h2>
+    <div id="excludedAddressesList">
+        <!-- Excluded addresses will be listed here -->
+    </div>
+</div>
+
+<div class="modal fade" id="editDHCPModal" tabindex="-1" aria-labelledby="editDHCPModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editDHCPModalLabel">Edit DHCP Pool</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editDHCPForm">
+            <input type="hidden" id="editPoolName" name="poolName">
+            <div class="mb-3">
+              <label for="editNetworkAddress" class="form-label">Network Address</label>
+              <input type="text" class="form-control" id="editNetworkAddress" name="networkAddress" required>
+            </div>
+            <div class="mb-3">
+              <label for="editSubnetMask" class="form-label">Subnet Mask</label>
+              <input type="text" class="form-control" id="editSubnetMask" name="subnetMask" required>
+            </div>
+            <div class="mb-3">
+              <label for="editDefaultRouter" class="form-label">Default Router</label>
+              <input type="text" class="form-control" id="editDefaultRouter" name="defaultRouter">
+            </div>
+            <div class="mb-3">
+              <label for="editDnsServer" class="form-label">DNS Server</label>
+              <input type="text" class="form-control" id="editDnsServer" name="dnsServer">
+            </div>
+            <div class="mb-3">
+              <label for="editDomainName" class="form-label">Domain Name</label>
+              <input type="text" class="form-control" id="editDomainName" name="domainName">
+            </div>
+            <div class="mb-3">
+              <label for="editLeaseTime" class="form-label">Lease Time (days)</label>
+              <input type="number" class="form-control" id="editLeaseTime" name="leaseTime">
+            </div>
+            <!-- <div class="mb-3">
+                <label for="excludedAddresses" class="form-label">Excluded Addresses (one per space)</label>
+                <textarea class="form-control" id="excludedAddresses" name="excludedAddresses" rows="3" placeholder="e.g. 192.168.1.1 192.168.1.100"    ></textarea>
+            </div> -->
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" id="saveEditDHCP">Save changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let deviceSelect; // Declare deviceSelect in the global scope
+
+document.addEventListener('DOMContentLoaded', function() {
+    deviceSelect = document.getElementById('device_id');
+    // const deviceSelect = document.getElementById('device_id');
+    const dhcpForm = document.getElementById('dhcpForm');
+    const dhcpPoolList = document.getElementById('dhcpPoolList');
+    const editDHCPModal = document.getElementById('editDHCPModal');
+    const editDHCPForm = document.getElementById('editDHCPForm');
+    const saveEditDHCPButton = document.getElementById('saveEditDHCP');
+    
+    // Initialize the Bootstrap modal
+    const editModal = new bootstrap.Modal(editDHCPModal);
+
+    // เพิ่มฟังก์ชันนี้เพื่อดึง device_id ของอุปกรณ์แรก
+    function getFirstDeviceId() {
+        const firstOption = deviceSelect.options[0];
+        return firstOption ? firstOption.value : null;
+    }
+     // Populate device list and then load DHCP pools
+     fetch('/get_devices')
+        .then(response => response.json())
+        .then(data => {
+            data.devices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.id;
+                option.textContent = `${device.hostname} (${device.ip_address})`;
+                deviceSelect.appendChild(option);
+            });
+            // Load DHCP pools after populating the device list
+            loadDHCPPools();
+        })
+        .catch(error => {
+            console.error('Error loading devices:', error);
+        });
+
+
+    function resetDHCPForm() {
+        const selectedDeviceId = deviceSelect.value; // Store the current selection
+        dhcpForm.reset();
+        deviceSelect.value = selectedDeviceId; // Restore the device selection
+        document.getElementById('excludedAddresses').value = '';
+    }
+
+    // Modify the form submission handler
+    dhcpForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(dhcpForm);
+        formData.append('device_id', deviceSelect.value);
+        formData.append('device_p', 'router_device');
+
+        // Handle excluded addresses
+        const excludedAddresses = document.getElementById('excludedAddresses').value
+            .split('\n')
+            .map(addr => addr.trim())
+            .filter(addr => addr !== '');
+        
+        excludedAddresses.forEach((addr, index) => {
+            formData.append(`excludedAddresses[]`, addr);
+        });
+
+        fetch('/create_dhcp_pool', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('DHCP pool created successfully');
+                loadDHCPPools();
+                resetDHCPForm();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    });
+    // Function to open the edit modal and populate it with data
+// Update the openEditDHCPModal function
+window.openEditDHCPModal = function(poolName, poolData) {
+    document.getElementById('editPoolName').value = poolName;
+    document.getElementById('editNetworkAddress').value = poolData.network;
+    document.getElementById('editSubnetMask').value = poolData.subnet;
+    document.getElementById('editDefaultRouter').value = poolData.default_router || '';
+    document.getElementById('editDnsServer').value = poolData.dns_server || '';
+    document.getElementById('editDomainName').value = poolData.domain_name || '';
+    document.getElementById('editLeaseTime').value = poolData.lease_time ? poolData.lease_time.split(' ')[0] : '';
+    
+    // Populate excluded addresses
+    const excludedAddressesTextarea = document.getElementById('excludedAddresses');
+    excludedAddressesTextarea.value = poolData.excluded_addresses ? poolData.excluded_addresses.join('\n') : '';
+
+    editModal.show();
+}
+
+    // Function to handle DHCP pool editing
+    function editDHCPPool() {
+    const formData = new FormData(editDHCPForm);
+    formData.append('device_id', deviceSelect.value);
+    formData.append('old_pool_name', document.getElementById('editPoolName').value);
+
+    // Handle excluded addresses
+    const excludedAddresses = document.getElementById('excludedAddresses').value
+        .split('\n')
+        .map(addr => addr.trim())
+        .filter(addr => addr !== '');
+    
+    excludedAddresses.forEach((addr, index) => {
+        formData.append(`excludedAddresses[]`, addr);
+    });
+
+    fetch('/edit_dhcp_pool', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('DHCP pool updated successfully');
+            loadDHCPPools(); // Refresh the list of DHCP pools
+            editModal.hide(); // Close the modal
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while updating the DHCP pool');
+    });
+}
+    // Event listener for the save button in the edit modal
+    saveEditDHCPButton.addEventListener('click', editDHCPPool);
+
+    // Function to load DHCP pools
+    function loadDHCPPools() {
+        const deviceId = deviceSelect.value || getFirstDeviceId();
+        if (!deviceId) {
+            console.error('No device ID available');
+            return;
+        }
+        const device_p = 'router_device'
+        fetch(`/get_dhcp_pools?device_id=${deviceId}&device_p=${device_p}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Update UI with DHCP pools data
+                    updateDHCPPoolsUI(data);
+                } else {
+                    console.error('Error loading DHCP pools:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    }
+
+
+function updateDHCPPoolsUI(data) {
+    const dhcpPoolList = document.getElementById('dhcpPoolList');
+    const excludedAddressesList = document.getElementById('excludedAddressesList');
+    
+    dhcpPoolList.innerHTML = '';
+    excludedAddressesList.innerHTML = '';
+
+    // Populate DHCP Pools
+    if (data.pools && data.pools.length > 0) {
+        data.pools.forEach(pool => {
+            const poolDiv = document.createElement('div');
+            poolDiv.className = 'card mb-3';
+            poolDiv.innerHTML = `
+            <div class="card-body">
+                <h5 class="card-title">Pool Name: ${pool.name}</h5>
+                <p class="card-text">
+                    Network: ${pool.network || 'Not set'}<br>
+                    Subnet: ${pool.subnet || 'Not set'}<br>
+                    Default Router: ${pool.default_router || 'Not set'}<br>
+                    DNS Server: ${pool.dns_server || 'Not set'}<br>
+                    Domain Name: ${pool.domain_name || 'Not set'}<br>
+                    Lease Time: ${pool.lease_time || 'Not set'}<br>
+                </p>
+                <button class="btn btn-primary btn-sm me-2 edit-pool-btn" data-pool-name="${pool.name}" data-pool-data='${JSON.stringify(pool)}'>Edit</button>
+                <button class="btn btn-danger btn-sm delete-pool-btn" data-pool-name="${pool.name}">Delete</button>
+            </div>
+            `;
+            dhcpPoolList.appendChild(poolDiv);
+        });
+    } else {
+        dhcpPoolList.innerHTML = '<p>No DHCP pools found.</p>';
+    }
+
+    // Populate Excluded Addresses
+    if (data.excluded && data.excluded.length > 0) {
+        data.excluded.forEach(item => {
+            const excludedDiv = document.createElement('div');
+            excludedDiv.className = 'excluded-address-item';
+            let excludedAddress = item.address ? item.address : `${item.start} - ${item.end}`;
+            excludedDiv.innerHTML = `
+            <div class="excluded-address-content">
+                <p class="excluded-address-text">Excluded Address: ${excludedAddress}</p>
+                <button class="btn btn-danger btn-sm delete-excluded-btn" data-excluded-address="${excludedAddress}">Delete</button>
+            </div>
+            `;
+            excludedAddressesList.appendChild(excludedDiv);
+        });
+    } else {
+        excludedAddressesList.innerHTML = '<p>No excluded addresses found.</p>';
+    }
+
+    // Add event listeners to the buttons
+    addEventListenersToButtons();
+}
+
+
+    function addEventListenersToButtons() {
+    // Add event listeners to the edit buttons
+    document.querySelectorAll('.edit-pool-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const poolName = this.getAttribute('data-pool-name');
+            const poolData = JSON.parse(this.getAttribute('data-pool-data'));
+            openEditDHCPModal(poolName, poolData);
+        });
+    });
+
+    // Add event listeners to the delete pool buttons
+    document.querySelectorAll('.delete-pool-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const poolName = this.getAttribute('data-pool-name');
+            deletePool(poolName);
+        });
+    });
+
+    // Add event listeners to the delete excluded address buttons
+    document.querySelectorAll('.delete-excluded-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const excludedAddress = this.getAttribute('data-excluded-address');
+            deleteExcludedAddress(excludedAddress);
+        });
+    });
+}
+
+    // Function to delete a DHCP pool
+    function deletePool(poolName) {
+        if (confirm('Are you sure you want to delete this DHCP pool?')) {
+            fetch('/delete_dhcp_pool', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    device_id: deviceSelect.value,
+                    pool_name: poolName
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('DHCP pool deleted successfully');
+                    loadDHCPPools();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        }
+    }
+
+    function editDHCPPool() {
+    const deviceId = document.getElementById('device_id').value;
+    const oldPoolName = document.getElementById('editPoolName').value;
+    const formData = new FormData(document.getElementById('editDHCPForm'));
+    
+    formData.append('device_id', deviceId);
+    formData.append('old_pool_name', oldPoolName);
+    formData.append('device_p', 'router_device');
+
+    // Handle excluded addresses
+    const excludedAddresses = document.getElementById('excludedAddresses').value.split('\n').filter(address => address.trim() !== '');
+    excludedAddresses.forEach(address => formData.append('excludedAddresses[]', address.trim()));
+
+    fetch('/edit_dhcp_pool', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(data.message);
+            loadDHCPPools(); // Refresh the list of DHCP pools
+            editModal.hide(); // Close the modal
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while updating the DHCP pool.');
+    });
+}
+
+// function deleteExcludedAddress(excludedAddress) {
+//     if (confirm(`Are you sure you want to delete the excluded address: ${excludedAddress}?`)) {
+//         const deviceId = document.getElementById('device_id').value;
+//         fetch('/delete_excluded_address', {
+//             method: 'POST',
+//             headers: {
+//                 'Content-Type': 'application/json',
+//             },
+//             body: JSON.stringify({
+//                 device_id: deviceId,
+//                 excluded_address: excludedAddress,
+//                 device_p: 'router_device'
+//             })
+//         })
+//         .then(response => response.json())
+//         .then(data => {
+//             if (data.status === 'success') {
+//                 alert('Excluded address deleted successfully');
+//                 loadDHCPPools(); // Refresh the list
+//             } else {
+//                 alert('Error: ' + data.message);
+//             }
+//         })
+//         .catch(error => {
+//             console.error('Error:', error);
+//             alert('An error occurred while deleting the excluded address');
+//         });
+//     }
+// }
+
+function deleteExcludedAddress(excludedAddress) {
+    let confirmMessage = `Are you sure you want to delete the excluded address: ${excludedAddress}?`;
+    if (excludedAddress.includes(' - ')) {
+        confirmMessage = `Are you sure you want to delete the excluded address range: ${excludedAddress}?`;
+    }
+    
+    if (confirm(confirmMessage)) {
+        const deviceId = document.getElementById('device_id').value;
+        fetch('/delete_excluded_address', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                device_id: deviceId,
+                excluded_address: excludedAddress,
+                device_p: 'router_device'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Excluded address deleted successfully');
+                loadDHCPPools(); // Refresh the list
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while deleting the excluded address');
+        });
+    }
+}
+
+    loadDHCPPools(); // Load pools for the initially selected device
+    // Initial load of DHCP pools
+    deviceSelect.addEventListener('change', loadDHCPPools);
+    
+});
+</script>
+{% endblock %}
