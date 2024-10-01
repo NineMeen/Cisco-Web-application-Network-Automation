@@ -235,7 +235,7 @@ def add_device_sl2devices():
     page = int(request.args.get('page', 1))
     if 'logged_in' in session:
         if request.method == 'POST':
-            device_p = request.form['device_type']
+            device_p = request.form['device_p']
             device_type = 'cisco_ios'
             ip_address = request.form['ip_address']
             user = request.form['user']
@@ -283,7 +283,7 @@ def add_device_sl3devices():
     page = int(request.args.get('page', 1))
     if 'logged_in' in session:
         if request.method == 'POST':
-            device_p = request.form['device_type']
+            device_p = request.form['device_p']
             device_type = 'cisco_ios'
             ip_address = request.form['ip_address']
             user = request.form['user']
@@ -429,39 +429,91 @@ def edit_device_sl3(id):
     else:
         return redirect(url_for('login'))
 
-@app.route('/devices/delete/<int:id>', methods=['GET', 'POST'])
+# @app.route('/devices/delete/<int:id>', methods=['GET', 'POST'])
+# def delete_device(id):
+#     if request.method == 'POST':
+#         conn = sqlite3.connect('device.db')
+#         c = conn.cursor()
+#         c.execute("SELECT hostname, ip_address FROM router_device WHERE id=?", (id,))
+#         device_info = c.fetchone()
+#         if device_info:
+#             hostname = device_info[0]
+#             ip_address = device_info[1]
+#             c.execute("DELETE FROM router_device WHERE id=?", (id,))
+#             conn.commit()
+#             conn.close()
+#             # Log device deletion with name and IP address
+#             log_event(f"Device deleted: {hostname} ({ip_address})", session.get('username'))
+#         return redirect(url_for('router_device'))
+#     return render_template('router_device.html')
+
+
+@app.route('/devices/delete/<int:id>', methods=['POST'])
 def delete_device(id):
-    if request.method == 'POST':
+    device_p = 'sl2_device'
+    table_mapping = {
+        'router_device': 'router_device',
+        'sl2_device': 'sl2_device',
+        'sl3_device': 'sl3_device'
+    }
+    
+    table_name = table_mapping.get(device_p)
+    
+    if not table_name:
+        return jsonify({'success': False, 'message': 'Invalid device type'})
+
+    try:
         conn = sqlite3.connect('device.db')
         c = conn.cursor()
-        c.execute("SELECT hostname, ip_address FROM router_device WHERE id=?", (id,))
+        
+        # Get device info before deletion
+        c.execute(f"SELECT hostname, ip_address FROM {table_name} WHERE id=?", (id,))
         device_info = c.fetchone()
+        
         if device_info:
-            hostname = device_info[0]
-            ip_address = device_info[1]
-            c.execute("DELETE FROM router_device WHERE id=?", (id,))
+            hostname, ip_address = device_info
+            
+            # Delete the device
+            c.execute(f"DELETE FROM {table_name} WHERE id=?", (id,))
             conn.commit()
-            conn.close()
-            # Log device deletion with name and IP address
+            
+            # Log device deletion
             log_event(f"Device deleted: {hostname} ({ip_address})", session.get('username'))
-        return redirect(url_for('router_device'))
-    return render_template('router_device.html')
-
+            
+            return jsonify({'success': True, 'message': f'Device {hostname} deleted successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'Device not found'})
+    
+    except sqlite3.Error as e:
+        return jsonify({'success': False, 'message': f'Database error: {str(e)}'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'An error occurred: {str(e)}'})
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/backup_config/<string:id>', methods=['GET'])
 def backup_config(id):
-    # Retrieve device details from database based on IP address
+    device_p = request.args.get('device_p')  # Default to 'router_device' if not specified
+    table_mapping = {
+        'router_device': 'router_device',
+        'sl2_device': 'sl2_device',
+        'sl3_device': 'sl3_device'
+    }
+    # Determine the table name based on device_p
+    table_name = table_mapping.get(device_p)
+
+    # Retrieve device details from database based on ID and device type
     conn = sqlite3.connect('device.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT ip_address, device_type, user, password, secret_password,hostname FROM router_device WHERE id=?", (id,))
+    cursor.execute(f"SELECT ip_address, device_type, user, password, hostname FROM {table_name} WHERE id=?", (id,))
     device_info = cursor.fetchone()
     conn.close()
 
     if not device_info:
-        output = "Error: Device not found."
-        return render_template('error.html', output=output)
+        return jsonify({"status": "error", "message": "Device not found."}), 404
 
-    ip_address, device_type, user, password, secret_password,hostname = device_info  # Unpack all required fields
+    ip_address, device_type, user, password,  hostname = device_info
 
     # Construct the device dictionary for Netmiko
     device = {
@@ -469,31 +521,24 @@ def backup_config(id):
         'ip': ip_address,
         'username': user,
         'password': password,
-        'port': '22',  # Default SSH port
+        'port': 22,  # Default SSH port
     }
 
-    if secret_password:
-        device['secret'] = secret_password  # Add secret only if provided
 
     try:
         # Connect to the device and get the backup configuration
         with ConnectHandler(**device) as net_connect:
             net_connect.enable()
             output = net_connect.send_command('show running-config')
-            # Generate a filename with the current date and time
             filename = f"backup_{hostname}_{ip_address}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
-            # Create a file object with the backup configuration
-            file_obj = BytesIO()
-            file_obj.write(output.encode())
+            file_obj = BytesIO(output.encode())
             file_obj.seek(0)
-            # Return the file as a downloadable attachment
-            return send_file(file_obj, as_attachment=True, download_name=filename)
+            return send_file(file_obj, as_attachment=True, download_name=filename, mimetype='text/plain')
     except Exception as e:
-        output = f"Error: {str(e)}"
-        return render_template('result.html', output=output)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route('/import_backup_page')
+@app.route('/import_backup_page/router')
 def import_backup_page():
     if 'logged_in' in session:
         conn = sqlite3.connect('device.db')
@@ -502,6 +547,30 @@ def import_backup_page():
         devices = cursor.fetchall()
         conn.close()
         return render_template('/router/router_import_config.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+    
+@app.route('/import_backup_page/switchlayer2')
+def import_backup_page_sl2():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl2_device")
+        devices = cursor.fetchall()
+        conn.close()
+        return render_template('/switch_layer_2/switch_layer_2_import_config.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+    
+@app.route('/import_backup_page/switchlayer3')
+def import_backup_page_sl3():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
+        devices = cursor.fetchall()
+        conn.close()
+        return render_template('/switch_layer_3/switch_layer_3_import_config.html', devices=devices)
     else:
         return redirect(url_for('login'))
 
@@ -555,11 +624,13 @@ def import_backup():
                 
             # Log the successful import
             log_event(f"Backup imported for device: {device_info['ip']}", session.get('username'))
-            
+            print(output)
             return jsonify({'status': 'success', 'message': 'Backup imported successfully'})
+        
         except Exception as e:
             # Log the failed import attempt
             log_event(f"Backup import failed for device: {device_info['ip']}. Error: {str(e)}", session.get('username'))
+            print(output)
             return jsonify({'status': 'error', 'message': str(e)})
     
     return jsonify({'status': 'error', 'message': 'Invalid file type'})
@@ -805,7 +876,10 @@ def router_acl_config():
                         'message': 'ACL rule added successfully',
                         'interfaces': interfaces
                     })
+                
+                    log_event(f"ACL rule added for device: {device_info['ip']}", session.get('username'))
             except Exception as e:
+                log_event(f"Error configuring ACL: {str(e)}", session.get('username'))
                 return jsonify({'status': 'error', 'message': f"Error configuring ACL: {str(e)}"})
         else:
             return jsonify({'status': 'error', 'message': "Device not found"})
@@ -887,9 +961,10 @@ def edit_acl_rule():
             
             # Fetch updated rules
             updated_rules = parse_acl_rules(show_acl_after)
-            
+            log_event(f"ACL rule edited for device: {device_info['ip']}", session.get('username'))
         return jsonify({'status': 'success', 'message': 'Rule edited successfully', 'updated_rules': updated_rules})
     except Exception as e:
+        log_event(f"Error editing ACL rule: {str(e)}", session.get('username'))
         return jsonify({'status': 'error', 'message': str(e)})    
     
 
@@ -926,9 +1001,10 @@ def delete_acl_rule():
             # Fetch updated rules after deletion
             output = net_connect.send_command(f'show ip access-lists {acl_name}')
             updated_rules = parse_acl_rules(output)
-            
+            log_event(f"ACL rule deleted for device: {device_info['ip']}", session.get('username'))
         return jsonify({'status': 'success', 'message': 'Rule deleted successfully', 'updated_rules': updated_rules})
     except Exception as e:
+        log_event(f"Error deleting ACL rule: {str(e)}", session.get('username'))
         return jsonify({'status': 'error', 'message': str(e)})
 
 
@@ -1055,7 +1131,7 @@ def apply_acl():
             # Verify the application
             running_config = net_connect.send_command('show running-config')
             acl_applications = parse_acl_applications(running_config)
-            
+            log_event(f"ACL {acl_name} applied to {interface} in {direction} direction", session.get('username'))
         return jsonify({
             'status': 'success',
             'message': f'ACL {acl_name} applied to {interface} in {direction} direction',
@@ -1108,13 +1184,14 @@ def delete_applied_acl():
 
             # Save the configuration
             net_connect.save_config()
-
+            log_event(f"ACL {acl_name} removed from {interface} ({direction})", session.get('username'))
             return jsonify({
                 'status': 'success',
                 'message': f'ACL {acl_name} removed from {interface} ({direction})'
             })
 
     except Exception as e:
+        log_event(f"Error removing ACL: {str(e)}", session.get('username'))
         return jsonify({
             'status': 'error',
             'message': f'An error occurred while removing the ACL: {str(e)}'
@@ -1197,8 +1274,10 @@ def create_dhcp_pool():
 
             output = net_connect.send_config_set(commands)
             net_connect.save_config()
+            log_event(f"DHCP pool created for device: {device_info['ip']}", session.get('username'))
         return jsonify({'status': 'success', 'message': 'DHCP pool created successfully'})
     except Exception as e:
+        log_event(f"Error creating DHCP pool: {str(e)}", session.get('username'))
         return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/get_dhcp_pools', methods=['GET'])
@@ -1263,8 +1342,10 @@ def delete_dhcp_pool():
             commands = [f'no ip dhcp pool {pool_name}']
             output = net_connect.send_config_set(commands)
             net_connect.save_config()
+            log_event(f"DHCP pool deleted for device: {device_info['ip']}", session.get('username'))
         return jsonify({'status': 'success', 'message': 'DHCP pool deleted successfully'})
     except Exception as e:
+        log_event(f"Error deleting DHCP pool: {str(e)}", session.get('username'))
         return jsonify({'status': 'error', 'message': str(e)})
 
 def parse_dhcp_pools(config_output):
@@ -1364,7 +1445,7 @@ def edit_dhcp_pool():
 
             output = net_connect.send_config_set(commands)
             net_connect.save_config()
-
+            log_event(f"DHCP pool updated for device: {device_info['ip']}", session.get('username'))
             # Verify the changes
             new_config = net_connect.send_command('show run | section ip dhcp pool')
             new_excluded = net_connect.send_command('show run | include ip dhcp excluded-address')
@@ -1379,8 +1460,9 @@ def edit_dhcp_pool():
             'updated_excluded': updated_excluded
         })
     except Exception as e:
+        log_event(f"Error updating DHCP pool: {str(e)}", session.get('username'))
         return jsonify({'status': 'error', 'message': str(e)})
-
+    
 
 @app.route('/delete_excluded_address', methods=['POST'])
 def delete_excluded_address():
@@ -1412,9 +1494,10 @@ def delete_excluded_address():
                 command = f'no ip dhcp excluded-address {excluded_address}'
             output = net_connect.send_config_set([command])
             net_connect.save_config()
-
+            log_event(f"Excluded address deleted for device: {device_info['ip']}", session.get('username'))
         return jsonify({'status': 'success', 'message': 'Excluded address deleted successfully'})
     except Exception as e:
+        log_event(f"Error deleting excluded address: {str(e)}", session.get('username'))
         return jsonify({'status': 'error', 'message': str(e)})
 
 if __name__ == '__main__':
