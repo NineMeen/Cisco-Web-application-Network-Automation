@@ -1,5 +1,132 @@
 {% extends "base.html" %}
 {% block content %}
-    <h1>Welcome to the Home </h1>
-    <p>This is the content of the home page.</p>
+<div class="container-fluid py-5 welcome-container">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <h1 class="display-4 text-center mb-5">Welcome to Cisco Network Automation</h1>
+            
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <h2 class="card-title">How to Use This Project</h2>
+                            <ol class="list-group list-group-numbered mt-3">
+                                <li class="list-group-item">Add your Cisco devices using the "Device" section under Router, SwitchL2, or SwitchL3.</li>
+                                <li class="list-group-item">Configure Access Control Lists (ACLs) for your routers and layer 3 switches.</li>
+                                <li class="list-group-item">Set up DHCP pools for automatic IP address assignment.</li>
+                                <li class="list-group-item">Configure VLANs and port settings for layer 2 and layer 3 switches.</li>
+                                <li class="list-group-item">Use the Import/Export Backup feature to manage device configurations.</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <h2 class="card-title">Setting Up SSH on Cisco Devices</h2>
+                            <div class="mt-3">
+                                <h5 class="card-subtitle mb-2 text-muted">Steps to Enable SSH:</h5>
+                                <ol class="custom-list">
+                                    <li>Configure a hostname:
+                                        <pre><code>hostname your-device-name</code></pre>
+                                    </li>
+                                    <li>Set up a domain name:
+                                        <pre><code>ip domain-name your-domain.com</code></pre>
+                                    </li>
+                                    <li>Generate RSA key pair:
+                                        <pre><code>crypto key generate rsa
+modulus 2048</code></pre>
+                                    </li>
+                                    <li>Create a user account:
+                                        <pre><code>username admin privilege 15 secret your-password</code></pre>
+                                    </li>
+                                    <li>Configure SSH version 2:
+                                        <pre><code>ip ssh version 2</code></pre>
+                                    </li>
+                                    <li>Enable SSH on VTY lines:
+                                        <pre><code>line vty 0 4
+transport input ssh
+login local</code></pre>
+                                    </li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-4 shadow-sm">
+                <div class="card-body">
+                    <h2 class="card-title">Getting Started</h2>
+                    <p class="card-text">To begin automating your Cisco network:</p>
+                    <ol>
+                        <li>Ensure all your devices have SSH enabled using the guide above.</li>
+                        <li>Add your devices to the system using the appropriate device type (Router, SwitchL2, SwitchL3).</li>
+                        <li>Start configuring your network using the various tools provided in the sidebar.</li>
+                    </ol>
+                    <p class="card-text">For more detailed information, please refer to the documentation or contact support.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .welcome-container {
+        background-color: #f8f9fa;
+        min-height: 100vh;
+    }
+    .card {
+        border: none;
+        transition: transform 0.3s;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+    }
+    .list-group-item {
+        background-color: transparent;
+        border: none;
+        padding: 0.5rem 1rem;
+    }
+    .custom-list {
+        counter-reset: item;
+        list-style-type: none;
+        padding-left: 0;
+    }
+    .custom-list li {
+        counter-increment: item;
+        margin-bottom: 15px;
+        position: relative;
+        padding-left: 2.5em;
+    }
+    .custom-list li::before {
+        content: counter(item);
+        background: #007bff;
+        border-radius: 50%;
+        color: white;
+        width: 1.5em;
+        height: 1.5em;
+        font-size: 0.8em;
+        font-weight: bold;
+        text-align: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        left: 0;
+        top: 0.2em;
+    }
+    pre {
+        background-color: #f1f3f5;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 10px;
+        margin-top: 5px;
+        font-size: 0.9em;
+    }
+    code {
+        color: #d63384;
+    }
+</style>
 {% endblock content %}

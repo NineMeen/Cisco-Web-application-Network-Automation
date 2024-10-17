@@ -51,7 +51,10 @@
                     <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#router-submenu">Router</a>
                     <ul class="collapse show" id="router-submenu">
                         <li><a class="nav-link" href="/router/device">Device</a></li>
-                        <li><a class="nav-link" href="/acl_config">Access Control List</a></li>
+                        <li><a class="nav-link" href="/router/interface_config">Interface Configuration</a></li>
+                        <li><a class="nav-link" href="/router/acl_config">Access Control List</a></li>
+                        <li><a class="nav-link" href="/router/nat_config">NAT</a></li>
+                        <li><a class="nav-link" href="/router/static_route">Static Route</a></li>
                         <li><a class="nav-link" href="/dhcp/create">DHCP</a></li>
                         <li><a class="nav-link" href="/import_backup_page/router">Import Backup</a></li>
                     </ul>
@@ -61,18 +64,27 @@
                     <ul class="collapse" id="switchl2-submenu">
                         <!-- Add SwitchL2 submenu items here -->
                         <li><a class="nav-link" href="/switchlayer2/device">Device</a></li>
-                        <li><a class="nav-link" href="/ipconfig">IP Configuration</a></li>
-                        <li><a class="nav-link" href="/vlan_config">VLAN</a></li>
+                        <li><a class="nav-link" href="/switchlayer2/interface_config">Interface Configuration</a></li>
+                        <li><a class="nav-link" href="/switchlayer2/vlan_management">VLAN Management</a></li>
                         <li><a class="nav-link" href="/import_backup_page/switchlayer2">Import Backup</a></li>
                     </ul>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#switchl3-submenu">SwitchL3</a>
                     <ul class="collapse" id="switchl3-submenu">
-                        <!-- Add SwitchL3 submenu items here -->
                         <li><a class="nav-link" href="/switchlayer3/device">Device</a></li>
-                        <li><a class="nav-link" href="/acl_config">Access Control List</a></li>
-                        <li><a class="nav-link" href="/dhcp/create">DHCP</a></li>
+                        <li><a class="nav-link" href="/switchlayer3/acl_config">Access Control List</a></li>
+                        <li><a class="nav-link" href="/switchlayer3/dhcp_config">DHCP</a></li>
+                        <li>
+                            <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#interface-submenu">Interface Configuration</a>
+                            <ul class="collapse" id="interface-submenu">
+                                <li><a class="nav-link" href="/switchlayer3/interface_config">Layer 2 Interface</a></li>
+                                <li><a class="nav-link" href="/switchlayer3/layer3_interface_config">Layer 3 Interface</a></li>
+                            </ul>
+                        </li>
+                        <li><a class="nav-link" href="/switchlayer3/nat_config">NAT</a></li>
+                        <li><a class="nav-link" href="/switchlayer3/static_route">Static Route</a></li>
+                        <li><a class="nav-link" href="/switchlayer3/vlan_management">VLAN Management</a></li>
                         <li><a class="nav-link" href="/import_backup_page/switchlayer3">Import Backup</a></li>
                     </ul>
                 </li>
@@ -80,6 +92,7 @@
                     <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#account-submenu">Account</a>
                     <ul class="collapse" id="account-submenu">
                         <li><a class="nav-link" href="/logout">Sign out</a></li>
+                        <li><a class="nav-link" href="/logs">Logs</a></li>
                     </ul>
                 </li>
             </ul>

@@ -1,8 +1,9 @@
-import math
+import socket
 from flask import Flask, render_template, request, session, redirect, url_for, flash, send_file, jsonify
 from flask_socketio import SocketIO, emit
 from flask_paginate import Pagination, get_page_args
 from netmiko import ConnectHandler 
+from paramiko.ssh_exception import AuthenticationException, SSHException
 import sqlite3
 from logger import log_event
 import datetime
@@ -128,6 +129,39 @@ def main():
     else:
         return redirect(url_for('login'))
 
+@app.route('/logs', defaults={'page': 1})
+@app.route('/logs/<int:page>')
+def show_logs(page):
+    if 'logged_in' in session:
+        conn = sqlite3.connect('user.db')
+        c = conn.cursor()
+        
+        # Get total number of logs
+        c.execute("SELECT COUNT(*) FROM log")
+        total_logs = c.fetchone()[0]
+        
+        # Set up pagination
+        per_page = 20
+        offset = (page - 1) * per_page
+        
+        # Fetch logs for the current page, sorted by timestamp (newest first)
+        c.execute("""
+            SELECT ROW_NUMBER() OVER (ORDER BY substr(timestamp, 7, 4) || '-' || substr(timestamp, 4, 2) || '-' || substr(timestamp, 1, 2) || substr(timestamp, 11) DESC) as row_num, 
+                   event, username, timestamp 
+            FROM log 
+            ORDER BY substr(timestamp, 7, 4) || '-' || substr(timestamp, 4, 2) || '-' || substr(timestamp, 1, 2) || substr(timestamp, 11) DESC
+            LIMIT ? OFFSET ?
+        """, (per_page, offset))
+        logs = c.fetchall()
+        conn.close()
+        
+        # Calculate total pages
+        total_pages = (total_logs + per_page - 1) // per_page
+        
+        return render_template('log.html', logs=logs, page=page, per_page=per_page, total_pages=total_pages)
+    else:
+        return redirect(url_for('login'))
+
 @app.route('/router/device', defaults={'page': 1})
 @app.route('/router/device/<int:page>')
 def router_device(page):
@@ -178,12 +212,12 @@ def sl3_device(page):
         offset = (page - 1) * per_page
         paginated_sl3_device = all_sl3_device[offset:offset + per_page]
 
-        return render_template('sl3_devices.html', router_device=paginated_sl3_device, page=page, per_page=per_page, total_pages=(len(all_sl3_device) + per_page - 1) // per_page)
+        return render_template('sl3_devices.html', sl3_device=paginated_sl3_device, page=page, per_page=per_page, total_pages=(len(all_sl3_device) + per_page - 1) // per_page)
     else:
         return redirect(url_for('login'))
 
 
-@app.route('/add/device/router',methods=['GET','POST'])
+@app.route('/add/device/router', methods=['GET', 'POST'])
 def add_device_router():
     page = int(request.args.get('page', 1))
     if 'logged_in' in session:
@@ -196,32 +230,49 @@ def add_device_router():
             secret_password = request.form['secret_password']
             hostname = request.form['hostname']
 
+            # Check if device already exists in the database
             conn = sqlite3.connect('device.db')
             c = conn.cursor()
-            
-            # Check if device already exists
             c.execute("SELECT * FROM router_device WHERE hostname=? AND ip_address=? AND user=?", (hostname, ip_address, user))
             existing_device = c.fetchone()
             if existing_device:
+                conn.close()
                 flash('Device data already exists in the database')
-                # username = session.get('username')
-                log_event('Device creation failed (duplicate)',session.get('username'))
+                log_event('Device creation failed (duplicate)', session.get('username'))
                 return render_template('router_add_devices.html')
 
+            # Check if the device is accessible via SSH
+            device = {
+                'device_type': device_type,
+                'ip': ip_address,
+                'username': user,
+                'password': password,
+                'secret': secret_password,
+                'port': 22,
+            }
+
+            try:
+                with ConnectHandler(**device) as net_connect:
+                    net_connect.enable()
+                    # If we can connect, the device is accessible
+            except (AuthenticationException, SSHException) as e:
+                conn.close()
+                flash(f'Unable to connect to the device: {str(e)}')
+                log_event(f'Device creation failed (connection error): {str(e)}', session.get('username'))
+                return render_template('router_add_devices.html')
+            except socket.error as e:
+                conn.close()
+                flash(f'Network error: {str(e)}')
+                log_event(f'Device creation failed (network error): {str(e)}', session.get('username'))
+                return render_template('router_add_devices.html')
+
+            # If we've made it here, the device is accessible and not a duplicate
             now = datetime.datetime.now()
             date_add = now.strftime("%d-%m-%Y %H:%M:%S")
             c.execute(
                 "INSERT INTO router_device (device_type, ip_address, user, password, secret_password, hostname, date_add, device_p) VALUES (?,?,?,?,?,?,?,?)", 
-                      (device_type, 
-                       ip_address, 
-                       user, 
-                       password, 
-                       secret_password, 
-                       hostname, 
-                       date_add,
-                       device_p,
-                       ),
-                       )
+                (device_type, ip_address, user, password, secret_password, hostname, date_add, device_p)
+            )
             conn.commit()
             conn.close()
             log_event(f"Router Device created: {hostname} ({ip_address})", session.get('username'))
@@ -230,7 +281,7 @@ def add_device_router():
     else:
         return redirect(url_for('login'))
 
-@app.route('/add/device/swichlayer2',methods=['GET','POST'])
+@app.route('/add/device/switchlayer2',methods=['GET','POST'])
 def add_device_sl2devices():
     page = int(request.args.get('page', 1))
     if 'logged_in' in session:
@@ -306,7 +357,7 @@ def add_device_sl3devices():
             now = datetime.datetime.now()
             date_add = now.strftime("%d-%m-%Y %H:%M:%S")
             c.execute(
-                "INSERT INTO sl2_device (device_type, ip_address, user, password, secret_password, hostname, date_add,  device_p) VALUES (?,?,?,?,?,?,?,?)", 
+                "INSERT INTO sl3_device (device_type, ip_address, user, password, secret_password, hostname, date_add,  device_p) VALUES (?,?,?,?,?,?,?,?)", 
 
                       (device_type, 
                        ip_address, 
@@ -321,8 +372,8 @@ def add_device_sl3devices():
             conn.commit()
             conn.close()
             log_event(f"Switch L3 Device created: {hostname} ({ip_address})", session.get('username'))
-            return redirect(url_for('router_device'))
-        return render_template('sl2_add_devices.html')
+            return redirect(url_for('sl3_device'))
+        return render_template('sl3_add_devices.html')
     else:
         return redirect(url_for('login'))
 
@@ -450,7 +501,7 @@ def edit_device_sl3(id):
 
 @app.route('/devices/delete/<int:id>', methods=['POST'])
 def delete_device(id):
-    device_p = 'sl2_device'
+    device_p = request.args.get('device_p')
     table_mapping = {
         'router_device': 'router_device',
         'sl2_device': 'sl2_device',
@@ -807,11 +858,101 @@ def get_acl_applications(device_id, device_p):
         print(f"Error in get_acl_applications: {str(e)}")
         return []
 
-@app.route('/acl_config', methods=['GET', 'POST'])
+@app.route('/router/static_route')
+def router_static_route():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM router_device")
+        devices = cursor.fetchall()
+        conn.close()
+        return render_template('/router/router_static_route.html', devices=devices, subnetmask=subnetmask)
+    else:
+        return redirect(url_for('login'))
+
+@app.route('/configure_static_route', methods=['POST'])
+def configure_static_route():
+    device_id = request.form['device_id']
+    destination = request.form['destination']
+    mask = request.form['subnetMask']
+    next_hop = request.form['next_hop']
+    device_p = request.form.get('device_p')
+    print(device_p)
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            
+            commands = []
+            
+            # Check if device is a Layer 3 switch and enable IP routing if necessary
+            if device_p == 'sl3_device':
+                commands.append('ip routing')
+            
+            # Add the static route command
+            commands.append(f'ip route {destination} {mask} {next_hop}')
+            
+            # Send commands and save config
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+            
+            # Get updated routing table
+            show_ip_route = net_connect.send_command('show ip route')
+            print(output)   
+            
+        log_event(f"Static route added: {destination}/{mask} via {next_hop}", session.get('username'))
+        return jsonify({
+            'status': 'success', 
+            'message': 'Static route configured successfully',
+            'output': output,
+            'routing_table': show_ip_route
+        })
+    except Exception as e:
+        log_event(f"Error configuring static route: {str(e)}", session.get('username'))
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/get_routing_table', methods=['GET'])
+def get_routing_table():
+    device_id = request.args.get('device_id')
+    device_p = request.args.get('device_p', 'router_device')
+
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            output = net_connect.send_command('show ip route')
+        return jsonify({'status': 'success', 'routing_table': output})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/router/acl_config', methods=['GET', 'POST'])
 def router_acl_config():
     if 'logged_in' not in session:
         return redirect(url_for('login'))
-
     conn = sqlite3.connect('device.db')
     cursor = conn.cursor()
     cursor.execute("SELECT id, hostname, ip_address FROM router_device")
@@ -820,8 +961,28 @@ def router_acl_config():
     device_p = request.form.get('device_p')
 
     if request.method == 'GET':
-        return render_template('router_acl_config.html', devices=devices)
-    elif request.method == 'POST':
+            return render_template('router_acl_config.html', 
+                           devices=devices, 
+                           selprotocal=selprotocal,
+                           selprotocal_edit=selprotocal_edit,
+                           subnetmask=subnetmask,
+                           source_wildcard_mask=source_wildcard_mask,
+                           destination_wildcard_mask=destination_wildcard_mask,
+                           source_wildcard_mask_edit=source_wildcard_mask_edit,
+                           destination_wildcard_mask_edit=destination_wildcard_mask_edit)
+
+@app.route('/acl_config', methods=['GET', 'POST'])
+def acl_config():
+    if 'logged_in' not in session:
+        return redirect(url_for('login'))
+    conn = sqlite3.connect('device.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, hostname, ip_address FROM router_device")
+    devices = cursor.fetchall()
+    conn.close()
+    device_p = request.form.get('device_p')
+
+    if request.method == 'POST':
         device_id = request.form['device_id']
         acl_name = request.form['acl_name']
         action = request.form['action']
@@ -839,7 +1000,7 @@ def router_acl_config():
         elif source_type == 'host':
             source = f"host {source_ip}"
         else:
-            wildcard = subnet_to_wildcard(source_subnet)
+            wildcard = (source_subnet)
             source = f"{source_ip} {wildcard}"
 
         if destination_type == 'any':
@@ -847,11 +1008,13 @@ def router_acl_config():
         elif destination_type == 'host':
             destination = f"host {destination_ip}"
         else:
-            wildcard = subnet_to_wildcard(destination_subnet)
+            wildcard = (destination_subnet)
             destination = f"{destination_ip} {wildcard}"
 
         acl_rule = f"{action} {protocol} {source} {destination}"
-
+        print(source_subnet)
+        print(source_ip)
+        print(acl_rule)
         # ส่ง configuration ไปยังอุปกรณ์
         device_info = get_device_info(device_id, device_p)
         if device_info:
@@ -876,7 +1039,7 @@ def router_acl_config():
                         'message': 'ACL rule added successfully',
                         'interfaces': interfaces
                     })
-                
+                    
                     log_event(f"ACL rule added for device: {device_info['ip']}", session.get('username'))
             except Exception as e:
                 log_event(f"Error configuring ACL: {str(e)}", session.get('username'))
@@ -923,7 +1086,7 @@ def edit_acl_rule():
     elif source_type == 'host':
         source = source_ip  # 'host' prefix is already added in frontend
     else:
-        wildcard = subnet_to_wildcard(source_wildcard)
+        wildcard = (source_wildcard)
         source = f"{source_ip} {wildcard}"
 
     if destination_type == 'any':
@@ -931,7 +1094,7 @@ def edit_acl_rule():
     elif destination_type == 'host':
         destination = destination_ip  # 'host' prefix is already added in frontend
     else:
-        wildcard = subnet_to_wildcard(destination_wildcard)
+        wildcard = (destination_wildcard)
         destination = f"{destination_ip} {wildcard}"
 
         
@@ -945,6 +1108,7 @@ def edit_acl_rule():
             #     return jsonify({'status': 'error', 'message': f'Rule with sequence {sequence} not found in ACL {acl_name}'})
             
             # Construct the new rule
+            protocol = protocol.lower()
             new_rule = f"{sequence} {action} {protocol} {source} {destination}"
             print(f"New rule to be added: {new_rule}")
             commands = [
@@ -953,12 +1117,12 @@ def edit_acl_rule():
                 new_rule  # Add the new rule
             ]
             output = net_connect.send_config_set(commands)
-            
+            print(output)   
             # Verify if the rule was added successfully
             show_acl_after = net_connect.send_command(f'show ip access-list {acl_name}')
+            print(show_acl_after)
             if new_rule not in show_acl_after:
                 return jsonify({'status': 'error', 'message': 'Failed to edit the rule. Please check the device configuration.'})
-            
             # Fetch updated rules
             updated_rules = parse_acl_rules(show_acl_after)
             log_event(f"ACL rule edited for device: {device_info['ip']}", session.get('username'))
@@ -1007,6 +1171,189 @@ def delete_acl_rule():
         log_event(f"Error deleting ACL rule: {str(e)}", session.get('username'))
         return jsonify({'status': 'error', 'message': str(e)})
 
+@app.route('/router/interface_config')
+def router_interface_config():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM router_device")
+        devices = cursor.fetchall()
+        conn.close()
+        return render_template('router/router_interface_config.html', devices=devices,subnetmask=subnetmask)
+    else:
+        return redirect(url_for('login'))
+
+@app.route('/router/configure_interface', methods=['POST'])
+def router_configure_interface():
+    device_id = request.form['device_id']
+    interface_type = request.form['interfaceType']
+    interface_name = request.form['interfaceName']
+    ip_address = request.form['ipAddress']
+    subnet_mask = request.form['subnetMask']
+    vlan_id = request.form.get('vlanId')
+    device_p = request.form.get('device_p')
+
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = []
+
+            if device_p == 'sl3_device':
+                commands.extend([
+                    f'interface {interface_name}',
+                    'no switchport',
+                ])
+                if interface_type == 'subinterface' and vlan_id:
+                    commands.extend([
+                        f'interface {interface_name}.{vlan_id}',
+                        f'encapsulation dot1q {vlan_id}',
+                    ])
+            else:
+                if interface_type == 'subinterface' and vlan_id:
+                    commands.extend([
+                        f'interface {interface_name}.{vlan_id}',
+                        f'encapsulation dot1q {vlan_id}',
+                    ])
+                else:
+                    commands.append(f'interface {interface_name}')
+
+            commands.extend([
+                f'ip address {ip_address} {subnet_mask}',
+                'no shutdown',
+            ])
+
+            if interface_type == 'subinterface':
+                commands.extend([
+                    f'interface {interface_name}',
+                    'no shutdown'
+                ])
+            
+            output = net_connect.send_config_set(commands)
+            print(output)
+            net_connect.save_config()
+            
+        return jsonify({'status': 'success', 'message': 'Interface configured successfully', 'output': output})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/router/nat_config')
+def router_nat_config():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM router_device")
+        devices = cursor.fetchall()
+        conn.close()
+        return render_template('router/router_nat_config.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+
+@app.route('/configure_nat', methods=['POST'])
+def router_configure_nat():
+    device_id = request.form['device_id']
+    interface_name = request.form['interfaceName']
+    nat_type = request.form['natType']
+    device_p = request.form.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [
+                f'interface {interface_name}',
+                f'ip nat {nat_type}'
+            ]
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+        return jsonify({'status': 'success', 'message': f'NAT {nat_type} configured on {interface_name}', 'output': output})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/create_nat_rule', methods=['POST'])
+def create_nat_rule():
+    device_id = request.form['device_id']
+    acl_name = request.form['aclName']
+    outside_interface = request.form['outsideInterface']
+    device_p = request.form.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [
+                f'ip nat inside source list {acl_name} interface {outside_interface} overload'
+            ]
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+        return jsonify({'status': 'success', 'message': 'NAT rule created successfully', 'output': output})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/get_nat_rules', methods=['GET'])
+def get_nat_rules():
+    device_id = request.args.get('device_id')
+    device_p = request.args.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            nat_output = net_connect.send_command('show ip nat translations')
+            nat_rules = parse_nat_rules(nat_output)
+        return jsonify({'status': 'success', 'nat_rules': nat_rules})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+def parse_nat_rules(output):
+    # This function needs to be implemented based on the output format of 'show ip nat translations'
+    # For now, we'll return a placeholder
+    return [{'inside_global': '10.0.0.1', 'inside_local': '192.168.1.1', 'outside_local': '--', 'outside_global': '--'}]
 
 @app.route('/get_interfaces', methods=['GET'])
 def get_interfaces():
@@ -1028,26 +1375,35 @@ def get_interfaces():
     try:
         with ConnectHandler(**device) as net_connect:
             net_connect.enable()
-            output = net_connect.send_command('show ip interface brief')
-            config = net_connect.send_command('show running-config')
-            acl_output = net_connect.send_command('show ip access-lists')
-
-        # print("Raw interfaces output:")
-        # print(output)
-
-        # print("Raw ACL output:")
-        # print(acl_output)
-
-        interfaces = parse_interfaces(output)
-        acl_applications = parse_acl_applications(config)
-        acl_rules = parse_acl_rules(acl_output)
-
-        return jsonify({
-            'status': 'success',
-            'interfaces': interfaces,
-            'acl_applications': acl_applications,
-            'acl_rules': acl_rules
-        })
+            if device_p == 'router_device' or device_p == 'sl3_device':
+                output = net_connect.send_command('show ip interface brief')
+                config = net_connect.send_command('show running-config')
+                acl_output = net_connect.send_command('show ip access-lists')
+                
+                interfaces = parse_interfaces(output)
+                acl_applications = parse_acl_applications(config)
+                acl_rules = parse_acl_rules(acl_output)
+                
+                return jsonify({
+                    'status': 'success',
+                    'interfaces': interfaces,
+                    'acl_applications': acl_applications,
+                    'acl_rules': acl_rules
+                })
+            elif device_p == 'sl2_device':
+                interface_output = net_connect.send_command('show interfaces status')
+                vlan_output = net_connect.send_command('show vlan brief')
+                
+                interfaces = parse_sl2_interfaces(interface_output)
+                vlans = parse_vlans(vlan_output)
+                
+                return jsonify({
+                    'status': 'success',
+                    'interfaces': interfaces,
+                    'vlans': vlans
+                })
+            else:
+                return jsonify({'status': 'error', 'message': 'Invalid device type'})
     except Exception as e:
         print(f"Error in get_interfaces: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)})
@@ -1100,6 +1456,46 @@ def parse_acl_applications(config):
 
     # print(f"Total ACL applications found: {len(acl_applications)}")
     return acl_applications
+
+def parse_sl2_interfaces(output):
+    interfaces = []
+    lines = output.strip().split('\n')
+    
+    # Find the header line
+    header_index = next((i for i, line in enumerate(lines) if 'Port' in line and 'Status' in line), 0)
+    
+    for line in lines[header_index + 1:]:
+        parts = line.split()
+        if len(parts) >= 4:
+            interface = {
+                'name': parts[0],
+                'status': parts[1],
+                'vlan': parts[2],
+                'duplex': parts[3],
+                'speed': parts[4] if len(parts) > 4 else 'unknown'
+            }
+            interfaces.append(interface)
+    
+    return interfaces
+
+def parse_vlans(output):
+    vlans = []
+    lines = output.strip().split('\n')
+    
+    # Find the header line
+    header_index = next((i for i, line in enumerate(lines) if 'VLAN' in line and 'Name' in line), 0)
+    
+    for line in lines[header_index + 1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            vlan = {
+                'id': parts[0],
+                'name': parts[1]
+            }
+            vlans.append(vlan)
+    
+    return vlans
+
 @app.route('/apply_acl', methods=['POST'])
 def apply_acl():
     device_id = request.form['device_id']
@@ -1205,6 +1601,15 @@ def get_devices():
     conn = sqlite3.connect('device.db')
     cursor = conn.cursor()
     cursor.execute("SELECT id, hostname, ip_address FROM router_device")
+    devices = [{'id': row[0], 'hostname': row[1], 'ip_address': row[2]} for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({'devices': devices})
+
+@app.route('/get_devices_sl3')
+def get_devices_sl3():
+    conn = sqlite3.connect('device.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
     devices = [{'id': row[0], 'hostname': row[1], 'ip_address': row[2]} for row in cursor.fetchall()]
     conn.close()
     return jsonify({'devices': devices})
@@ -1322,8 +1727,9 @@ def delete_dhcp_pool():
     data = request.json
     device_id = data['device_id']
     pool_name = data['pool_name']
+    device_p = data.get('device_p')
 
-    device_info = get_device_info(device_id, 'router_device')
+    device_info = get_device_info(device_id, device_p)
     if not device_info:
         return jsonify({'status': 'error', 'message': 'Device not found'})
 
@@ -1499,6 +1905,710 @@ def delete_excluded_address():
     except Exception as e:
         log_event(f"Error deleting excluded address: {str(e)}", session.get('username'))
         return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/switchlayer2/interface_config', methods=['GET'])
+def interface_config():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl2_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        # device_p = 'router_device'
+        return render_template('switch_layer_2/interface_config.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+
+
+
+@app.route('/configure_interface', methods=['POST'])
+def configure_interface():
+    device_id = request.form['device_id']
+    interface = request.form['interface']
+    port_mode = request.form['port_mode']
+    vlan = request.form.get('vlan', '')
+    port_security = request.form.get('port_security', 'off')
+    max_mac_addresses = request.form.get('max_mac_addresses', '1')
+    violation_action = request.form.get('violation_action', 'shutdown')
+    device_p = request.form.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [
+                f'interface {interface}',
+                'no shutdown',
+            ]
+
+            if port_mode == 'trunk':
+                commands.extend([
+                    'switchport trunk encapsulation dot1q',
+                    'switchport mode trunk'
+                ])
+                if vlan:
+                    commands.append(f'switchport trunk native vlan {vlan}')
+            elif port_mode == 'access':
+                commands.append('switchport mode access')
+                if vlan:
+                    commands.append(f'switchport access vlan {vlan}')
+
+            if port_security == 'on':
+                commands.extend([
+                    'switchport port-security',
+                    f'switchport port-security maximum {max_mac_addresses}',
+                    f'switchport port-security violation {violation_action}'
+                ])
+
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+            print(output)
+
+            log_event(f"Interface {interface} configured on device: {device_info['ip']}", session.get('username'))
+            return jsonify({'status': 'success', 'message': f'Interface {interface} configured successfully', 'output': output})
+    except Exception as e:
+        log_event(f"Error configuring interface: {str(e)}", session.get('username'))
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/delete_vlan_from_interface', methods=['POST'])
+def delete_vlan_from_interface():
+    device_id = request.form['device_id']
+    interface = request.form['interface']
+    vlan = request.form['vlan']
+    device_p = request.form.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [
+                f'interface {interface}',
+                'no switchport access vlan',
+                'switchport mode access',
+                'switchport access vlan 1',  # Reset to default VLAN
+                'exit'
+            ]
+            output = net_connect.send_config_set(commands)
+            print(device)
+            net_connect.save_config()
+
+        return jsonify({'status': 'success', 'message': f'VLAN {vlan} removed from interface {interface}'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/switchlayer2/vlan_management', methods=['GET'])
+def vlan_management():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl2_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        # device_p = 'router_device'
+        return render_template('switch_layer_2/vlan_management.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+
+@app.route('/get_vlans', methods=['GET'])
+def get_vlans():
+    device_id = request.args.get('device_id')
+    device_p = request.args.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            output = net_connect.send_command('show vlan brief')
+            vlans = parse_vlan_output(output)
+            return jsonify({'status': 'success', 'vlans': vlans})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/create_vlan', methods=['POST'])
+def create_vlan():
+    device_id = request.form['device_id']
+    vlan_id = request.form['vlan_id']
+    vlan_name = request.form['vlan_name']
+    device_p = 'sl2_device'
+    device_info = get_device_info(device_id, device_p)
+    
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [
+                f'vlan {vlan_id}',
+                f'name {vlan_name}'
+            ]
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+            return jsonify({'status': 'success', 'message': f'VLAN {vlan_id} created successfully'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/edit_vlan', methods=['POST'])
+def edit_vlan():
+    device_id = request.form['device_id']
+    vlan_id = request.form['vlan_id']
+    new_name = request.form['new_name']
+    device_p = 'sl2_device'
+    device_info = get_device_info(device_id, device_p)
+    
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [
+                f'vlan {vlan_id}',
+                f'name {new_name}'
+            ]
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+            return jsonify({'status': 'success', 'message': f'VLAN {vlan_id} updated successfully'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/delete_vlan', methods=['POST'])
+def delete_vlan():
+    device_id = request.form['device_id']
+    vlan_id = request.form['vlan_id']
+    device_p = 'sl2_device'
+    device_info = get_device_info(device_id, device_p)
+    
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'secret': device_info['secret'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            commands = [f'no vlan {vlan_id}']
+            output = net_connect.send_config_set(commands)
+            net_connect.save_config()
+            return jsonify({'status': 'success', 'message': f'VLAN {vlan_id} deleted successfully'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+def parse_vlan_output(output):
+    vlans = []
+    lines = output.strip().split('\n')[2:]  # Skip header lines
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 3:
+            vlan = {
+                'id': parts[0],
+                'name': parts[1],
+                'ports': ' '.join(parts[3:]) if len(parts) > 3 else ''
+            }
+            vlans.append(vlan)
+    return vlans
+
+@app.route('/switchlayer3/interface_config', methods=['GET'])
+def interface_config_sl3():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        return render_template('switch_layer_3/interface_config.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+    
+@app.route('/switchlayer3/layer3_interface_config', methods=['GET'])
+def layer3_interface_config_sl3():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        return render_template('switch_layer_3/layer3_interface_config.html', devices=devices, subnetmask=subnetmask)
+    else:
+        return redirect(url_for('login'))
+    
+@app.route('/switchlayer3/vlan_management', methods=['GET'])
+def vlan_management_sl3():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        # device_p = 'router_device'
+        return render_template('switch_layer_3/vlan_management.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+    
+@app.route('/switchlayer3/dhcp_config', methods=['GET'])
+def dhcp_config_sl3():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        # device_p = 'router_device'
+        return render_template('switch_layer_3/dhcp_config.html', devices=devices)
+    else:
+        return redirect(url_for('login'))
+    
+
+@app.route('/switchlayer3/acl_config', methods=['GET'])
+def acl_config_sl3():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        # device_p = 'router_device'
+        return render_template('switch_layer_3/acl_config.html', devices=devices, 
+                           selprotocal=selprotocal,
+                           selprotocal_edit=selprotocal_edit,
+                           subnetmask=subnetmask,
+                           source_wildcard_mask=source_wildcard_mask,
+                           destination_wildcard_mask=destination_wildcard_mask,
+                           source_wildcard_mask_edit=source_wildcard_mask_edit,
+                           destination_wildcard_mask_edit=destination_wildcard_mask_edit)
+    else:
+        return redirect(url_for('login'))
+    
+
+@app.route('/get_interfaces_sw3', methods=['GET'])
+def get_interfaces_sw3():
+    device_id = request.args.get('device_id')
+    device_p = request.args.get('device_p')
+    device_info = get_device_info(device_id, device_p)
+    
+    if not device_info:
+        return jsonify({'status': 'error', 'message': 'Device not found'})
+
+    device = {
+        'device_type': device_info['device_type'],
+        'ip': device_info['ip'],
+        'username': device_info['username'],
+        'password': device_info['password'],
+        'port': 22,
+    }
+
+    try:
+        with ConnectHandler(**device) as net_connect:
+            net_connect.enable()
+            if device_p == 'sl3_device':
+                interface_output = net_connect.send_command('show interfaces status')
+                vlan_output = net_connect.send_command('show vlan brief')
+                
+                interfaces = parse_sl2_interfaces(interface_output)
+                vlans = parse_vlans(vlan_output)
+                
+                return jsonify({
+                    'status': 'success',
+                    'interfaces': interfaces,
+                    'vlans': vlans
+                })
+            else:
+                return jsonify({'status': 'error', 'message': 'Invalid device type'})
+    except Exception as e:
+        print(f"Error in get_interfaces: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/switchlayer3/nat_config', methods=['GET'])
+def nat_config_sl3():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        return render_template('switch_layer_3/switch_layer3_nat_config.html', devices=devices,subnetmask=subnetmask)
+    
+@app.route('/switchlayer3/static_route', methods=['GET'])
+def static_route_sl3():
+    if 'logged_in' in session:
+        conn = sqlite3.connect('device.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, hostname, ip_address FROM sl3_device")
+        devices = cursor.fetchall()
+        conn.close() 
+        return render_template('switch_layer_3/static_route.html', devices=devices,subnetmask=subnetmask)
+
+def selprotocal(protocol=None):
+    options = [
+        ('ahp', 'ahp'),
+        ('EIGRP', 'EIGRP'),
+        ('ESP', 'ESP'),
+        ('GRE', 'GRE'),
+        ('ICMP', 'ICMP'),
+        ('IGMP', 'IGMP'),
+        ('IP', 'IP'),
+        ('IPINIP', 'IPINIP'),
+        ('NOS', 'NOS'),
+        ('OSPF', 'OSPF'),
+        ('PIM', 'PIM'),
+        ('PPC', 'PPC'),
+        ('tcp', 'tcp'),
+        ('udp', 'udp'),
+
+    ]
+    select_html = '<select name="protocol" id="protocol" class="form-select" required>'
+    select_html += '<option value="">Select a protocol</option>'
+    for value, text in options:
+        selected = ' selected' if protocol and protocol.upper() == value else ''
+        select_html += f'<option value="{value}"{selected}>{text}</option>'
+    select_html += '</select>'
+    return select_html
+
+def selprotocal_edit(protocol=None):
+    options = [
+        ('AHP', 'AHP'),
+        ('EIGRP', 'EIGRP'),
+        ('ESP', 'ESP'),
+        ('GRE', 'GRE'),
+        ('ICMP', 'ICMP'),
+        ('IGMP', 'IGMP'),
+        ('IP', 'IP'),
+        ('IPINIP', 'IPINIP'),
+        ('NOS', 'NOS'),
+        ('OSPF', 'OSPF'),
+        ('PIM', 'PIM'),
+        ('PPC', 'PPC'),
+        ('TCP', 'TCP'),
+        ('UDP', 'UDP'),
+
+    ]
+    select_html = '<select name="protocol" id="editProtocol" class="form-select" required>'
+    select_html += '<option value="">Select a protocol</option>'
+    for value, text in options:
+        selected = ' selected' if protocol and protocol.upper() == value else ''
+        select_html += f'<option value="{value}"{selected}>{text}</option>'
+    select_html += '</select>'
+    return select_html
+
+def subnetmask(mask=None):
+    options = [
+        ('255.0.0.0', '/8'),
+        ('255.128.0.0', '/9'),
+        ('255.192.0.0', '/10'),
+        ('255.224.0.0', '/11'),
+        ('255.240.0.0', '/12'),
+        ('255.248.0.0', '/13'),
+        ('255.252.0.0', '/14'),
+        ('255.254.0.0', '/15'),
+        ('255.255.0.0', '/16'),
+        ('255.255.128.0', '/17'),
+        ('255.255.192.0', '/18'),
+        ('255.255.224.0', '/19'),
+        ('255.255.240.0', '/20'),
+        ('255.255.248.0', '/21'),
+        ('255.255.252.0', '/22'),
+        ('255.255.254.0', '/23'),
+        ('255.255.255.0', '/24'),
+        ('255.255.255.128', '/25'),
+        ('255.255.255.192', '/26'),
+        ('255.255.255.224', '/27'),
+        ('255.255.255.240', '/28'),
+        ('255.255.255.248', '/29'),
+        ('255.255.255.252', '/30'),
+        ('255.255.255.254', '/31'),
+        ('255.255.255.255', '/32')
+    ]
+    select_html = '<select name="mask" id="mask" class="form-select" required>'
+    for value, text in options:
+        selected = ' selected' if mask and mask == value else ''
+        select_html += f'<option value="{value}"{selected}>{value} {text}</option>'
+    select_html += '</select>'
+    return select_html
+
+# def source_wildcard_mask(mask=None):
+#     options = [
+#         ('0.255.255.255', '/8'),
+#         ('0.127.255.255', '/9'),
+#         ('0.63.255.255', '/10'),
+#         ('0.31.255.255', '/11'),
+#         ('0.15.255.255', '/12'),
+#         ('0.7.255.255', '/13'),
+#         ('0.3.255.255', '/14'),
+#         ('0.1.255.255', '/15'),
+#         ('0.0.255.255', '/16'),
+#         ('0.0.127.255', '/17'),
+#         ('0.0.63.255', '/18'),
+#         ('0.0.31.255', '/19'),
+#         ('0.0.15.255', '/20'),
+#         ('0.0.7.255', '/21'),
+#         ('0.0.3.255', '/22'),
+#         ('0.0.1.255', '/23'),
+#         ('0.0.0.255', '/24'),
+#         ('0.0.0.127', '/25'),
+#         ('0.0.0.63', '/26'),
+#         ('0.0.0.31', '/27'),
+#         ('0.0.0.15', '/28'),
+#         ('0.0.0.7', '/29'),
+#         ('0.0.0.3', '/30'),
+#         ('0.0.0.1', '/31'),
+#         ('0.0.0.0', '/32')
+#     ]
+#     select_html = '<select name="source_wildcard" id="source_wildcard" class="form-select" required>'
+#     for value, text in options:
+#         selected = ' selected' if mask and mask == value else ''
+#         select_html += f'<option value="{value}"{selected}>{value} {text}</option>'
+#     select_html += '</select>'
+#     return select_html
+
+# def destination_wildcard_mask(mask=None):
+#     options = [
+#         ('0.255.255.255', '/8'),
+#         ('0.127.255.255', '/9'),
+#         ('0.63.255.255', '/10'),
+#         ('0.31.255.255', '/11'),
+#         ('0.15.255.255', '/12'),
+#         ('0.7.255.255', '/13'),
+#         ('0.3.255.255', '/14'),
+#         ('0.1.255.255', '/15'),
+#         ('0.0.255.255', '/16'),
+#         ('0.0.127.255', '/17'),
+#         ('0.0.63.255', '/18'),
+#         ('0.0.31.255', '/19'),
+#         ('0.0.15.255', '/20'),
+#         ('0.0.7.255', '/21'),
+#         ('0.0.3.255', '/22'),
+#         ('0.0.1.255', '/23'),
+#         ('0.0.0.255', '/24'),
+#         ('0.0.0.127', '/25'),
+#         ('0.0.0.63', '/26'),
+#         ('0.0.0.31', '/27'),
+#         ('0.0.0.15', '/28'),
+#         ('0.0.0.7', '/29'),
+#         ('0.0.0.3', '/30'),
+#         ('0.0.0.1', '/31'),
+#         ('0.0.0.0', '/32')
+#     ]
+#     select_html = '<select name="destination_wildcard" id="destination_wildcard" class="form-select" required>'
+#     for value, text in options:
+#         selected = ' selected' if mask and mask == value else ''
+#         select_html += f'<option value="{value}"{selected}>{value} {text}</option>'
+#     select_html += '</select>'
+#     return select_html
+
+# def source_wildcard_mask_edit(mask=None):
+#     options = [
+#         ('0.255.255.255', '/8'),
+#         ('0.127.255.255', '/9'),
+#         ('0.63.255.255', '/10'),
+#         ('0.31.255.255', '/11'),
+#         ('0.15.255.255', '/12'),
+#         ('0.7.255.255', '/13'),
+#         ('0.3.255.255', '/14'),
+#         ('0.1.255.255', '/15'),
+#         ('0.0.255.255', '/16'),
+#         ('0.0.127.255', '/17'),
+#         ('0.0.63.255', '/18'),
+#         ('0.0.31.255', '/19'),
+#         ('0.0.15.255', '/20'),
+#         ('0.0.7.255', '/21'),
+#         ('0.0.3.255', '/22'),
+#         ('0.0.1.255', '/23'),
+#         ('0.0.0.255', '/24'),
+#         ('0.0.0.127', '/25'),
+#         ('0.0.0.63', '/26'),
+#         ('0.0.0.31', '/27'),
+#         ('0.0.0.15', '/28'),
+#         ('0.0.0.7', '/29'),
+#         ('0.0.0.3', '/30'),
+#         ('0.0.0.1', '/31'),
+#         ('0.0.0.0', '/32')
+#     ]
+#     select_html = '<select name="source_wildcard_mask" id="editSourceWildcard" class="form-select" required>'
+#     for value, text in options:
+#         selected = ' selected' if mask and mask == value else ''
+#         select_html += f'<option value="{value}"{selected}>{value} {text}</option>'
+#     select_html += '</select>'
+#     return select_html
+
+# def destination_wildcard_mask_edit(mask=None):
+#     options = [
+#         ('0.255.255.255', '/8'),
+#         ('0.127.255.255', '/9'),
+#         ('0.63.255.255', '/10'),
+#         ('0.31.255.255', '/11'),
+#         ('0.15.255.255', '/12'),
+#         ('0.7.255.255', '/13'),
+#         ('0.3.255.255', '/14'),
+#         ('0.1.255.255', '/15'),
+#         ('0.0.255.255', '/16'),
+#         ('0.0.127.255', '/17'),
+#         ('0.0.63.255', '/18'),
+#         ('0.0.31.255', '/19'),
+#         ('0.0.15.255', '/20'),
+#         ('0.0.7.255', '/21'),
+#         ('0.0.3.255', '/22'),
+#         ('0.0.1.255', '/23'),
+#         ('0.0.0.255', '/24'),
+#         ('0.0.0.127', '/25'),
+#         ('0.0.0.63', '/26'),
+#         ('0.0.0.31', '/27'),
+#         ('0.0.0.15', '/28'),
+#         ('0.0.0.7', '/29'),
+#         ('0.0.0.3', '/30'),
+#         ('0.0.0.1', '/31'),
+#         ('0.0.0.0', '/32')
+#     ]
+#     select_html = '<select name="destination_wildcard_mask" id="editDestinationWildcard" class="form-select" required>'
+#     for value, text in options:
+#         selected = ' selected' if mask and mask == value else ''
+#         select_html += f'<option value="{value}"{selected}>{value} {text}</option>'
+#     select_html += '</select>'
+#     return select_html
+
+def generate_wildcard_mask_dropdown(name, id, mask=None):
+    options = [
+        ('0.255.255.255', '/8'),
+        ('0.127.255.255', '/9'),
+        ('0.63.255.255', '/10'),
+        ('0.31.255.255', '/11'),
+        ('0.15.255.255', '/12'),
+        ('0.7.255.255', '/13'),
+        ('0.3.255.255', '/14'),
+        ('0.1.255.255', '/15'),
+        ('0.0.255.255', '/16'),
+        ('0.0.127.255', '/17'),
+        ('0.0.63.255', '/18'),
+        ('0.0.31.255', '/19'),
+        ('0.0.15.255', '/20'),
+        ('0.0.7.255', '/21'),
+        ('0.0.3.255', '/22'),
+        ('0.0.1.255', '/23'),
+        ('0.0.0.255', '/24'),
+        ('0.0.0.127', '/25'),
+        ('0.0.0.63', '/26'),
+        ('0.0.0.31', '/27'),
+        ('0.0.0.15', '/28'),
+        ('0.0.0.7', '/29'),
+        ('0.0.0.3', '/30'),
+        ('0.0.0.1', '/31'),
+        ('0.0.0.0', '/32')
+    ]
+    select_html = f'<select name="{name}" id="{id}" class="form-select" required>'
+    for value, text in options:
+        selected = ' selected' if mask and mask == value else ''
+        select_html += f'<option value="{value}"{selected}>{value} {text}</option>'
+    select_html += '</select>'
+    return select_html
+
+def source_wildcard_mask(mask=None):
+    return generate_wildcard_mask_dropdown("source_wildcard", "source_wildcard", mask)
+
+def destination_wildcard_mask(mask=None):
+    return generate_wildcard_mask_dropdown("destination_wildcard", "destination_wildcard", mask)
+
+def source_wildcard_mask_edit(mask=None):
+    return generate_wildcard_mask_dropdown("editSourceWildcard", "editSourceWildcard", mask)
+
+def destination_wildcard_mask_edit(mask=None):
+    return generate_wildcard_mask_dropdown("editDestinationWildcard", "editDestinationWildcard", mask)
+
+def subnetmask_dropdown(name, id, mask=None):
+    options = [
+        ('0.0.0.0', '/0'),
+        ('255.0.0.0', '/8'),
+        ('255.128.0.0', '/9'),
+        ('255.192.0.0', '/10'),
+        ('255.224.0.0', '/11'),
+        ('255.240.0.0', '/12'),
+        ('255.248.0.0', '/13'),
+        ('255.252.0.0', '/14'),
+        ('255.254.0.0', '/15'),
+        ('255.255.0.0', '/16'),
+        ('255.255.128.0', '/17'),
+        ('255.255.192.0', '/18'),
+        ('255.255.224.0', '/19'),
+        ('255.255.240.0', '/20'),
+        ('255.255.248.0', '/21'),
+        ('255.255.252.0', '/22'),
+        ('255.255.254.0', '/23'),
+        ('255.255.255.0', '/24'),
+        ('255.255.255.128', '/25'),
+        ('255.255.255.192', '/26'),
+        ('255.255.255.224', '/27'),
+        ('255.255.255.240', '/28'),
+        ('255.255.255.248', '/29'),
+        ('255.255.255.252', '/30'),
+        ('255.255.255.254', '/31'),
+        ('255.255.255.255', '/32')
+    ]
+    select_html = f'<select name="{name}" id="{id}" class="form-select" required>'
+    for value, text in options:
+        selected = ' selected' if mask and mask == value else ''
+        select_html += f'<option value="{value}"{selected}>{value} {text}</option>'
+    select_html += '</select>'
+    return select_html
+
+def subnetmask(mask=None):
+    return subnetmask_dropdown("subnetMask", "subnetMask", mask)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True)

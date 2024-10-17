@@ -309,7 +309,7 @@
     
         function updateACLRules() {
             const deviceId = deviceSelect.value;
-            const device_p = 'router_device'
+            const device_p = 'sl3_device'
             fetch(`/get_acl_rules?device_id=${deviceId}&device_p=${device_p}`)
                 .then(response => response.json())
                 .then(data => {
@@ -421,7 +421,7 @@
 
 function updateInterfaceList() {
     const deviceId = deviceSelect.value;
-    const device_p = 'router_device';
+    const device_p = 'sl3_device';
     fetch(`/get_interfaces?device_id=${deviceId}&device_p=${device_p}`)
         .then(response => response.json())
         .then(data => {
@@ -504,7 +504,7 @@ function deleteAppliedAcl(interfaceName, aclName, direction) {
         formData.append('interface', interfaceName);
         formData.append('acl_name', aclName);
         formData.append('direction', direction);
-        formData.append('device_p', 'router_device'); // Add device_p parameter
+        formData.append('device_p', 'sl3_device'); // Add device_p parameter
 
         fetch('/delete_applied_acl', {
             method: 'POST',
@@ -536,7 +536,7 @@ function handleFormSubmit(event) {
         event.preventDefault();
         const formData = new FormData(aclForm);
         formData.append('device_id', deviceSelect.value);
-        formData.append('device_p', 'router_device');
+        formData.append('device_p', 'sl3_device');
         
         // Store the current device selection
         const currentDeviceId = deviceSelect.value;
@@ -735,7 +735,7 @@ function openEditModal(aclName, sequence) {
         function saveEditedRule() {
             const formData = new FormData(editRuleForm);
             formData.append('device_id', deviceSelect.value);
-            formData.append('device_p', 'router_device');
+            formData.append('device_p', 'sl3_device');
 
             // Construct source_ip and destination_ip based on type
             const sourceType = formData.get('source_type');
@@ -793,7 +793,7 @@ function openEditModal(aclName, sequence) {
             formData.append('acl_name', aclName);
             formData.append('sequence', sequence);
             formData.append('direction', direction);
-            formData.append('device_p', 'router_device');
+            formData.append('device_p', 'sl3_device');
             fetch('/move_rule', {
                 method: 'POST',
                 body: formData
@@ -816,7 +816,7 @@ function openEditModal(aclName, sequence) {
             formData.append('device_id', deviceSelect.value);
             formData.append('acl_name', aclName);
             formData.append('sequence', sequence);
-            formData.append('device_p', 'router_device');
+            formData.append('device_p', 'sl3_device');
     
             fetch('/delete_acl_rule', {
                 method: 'POST',
@@ -859,7 +859,7 @@ function openEditModal(aclName, sequence) {
         formData.append('interface', interfaceName);
         formData.append('acl_name', aclName);
         formData.append('direction', direction);
-        formData.append('device_p', 'router_device');
+        formData.append('device_p', 'sl3_device');
 
         fetch('/apply_acl', {
             method: 'POST',

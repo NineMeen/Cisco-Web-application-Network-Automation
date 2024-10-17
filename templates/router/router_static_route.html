@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    h2, h3 {
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+
+    #staticRouteForm {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        font-weight: bold;
+    }
+
+    .form-control, .form-select {
+        margin-bottom: 15px;
+    }
+
+    .btn-primary {
+        background-color: #007bff;
+        border-color: #007bff;
+    }
+
+    .btn-primary:hover {
+        background-color: #0056b3;
+        border-color: #0056b3;
+    }
+
+    #routingTable {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    @media (max-width: 768px) {
+        .container {
+            padding: 10px;
+        }
+        
+        #staticRouteForm, #routingTable {
+            padding: 10px;
+        }
+    }
+</style>
+
+<div class="container">
+    <h2>Configure Static Route</h2>
+    <form id="staticRouteForm">
+        <div class="mb-3">
+            <label for="device_id" class="form-label">Select Device</label>
+            <select class="form-select" id="device_id" name="device_id" required>
+                {% for device in devices %}
+                    <option value="{{ device[0] }}">{{ device[1] }} ({{ device[2] }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="destination" class="form-label">Destination Network</label>
+            <input type="text" class="form-control" id="destination" name="destination" required>
+        </div>
+        <div class="mb-3">
+            <label for="mask" class="form-label">Subnet Mask</label>
+            {{ subnetmask() | safe }}
+        </div>
+        <div class="mb-3">
+            <label for="next_hop" class="form-label">Next Hop</label>
+            <input type="text" class="form-control" id="next_hop" name="next_hop" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Static Route</button>
+    </form>
+
+    <div class="mt-4">
+        <h3>Current Routing Table</h3>
+        <pre id="routingTable"></pre>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const deviceSelect = document.getElementById('device_id');
+    const routingTable = document.getElementById('routingTable');
+    const staticRouteForm = document.getElementById('staticRouteForm');
+
+    function updateRoutingTable() {
+        const deviceId = deviceSelect.value;
+        const device_p = 'router_device';
+        fetch(`/get_routing_table?device_id=${deviceId}&device_p=${device_p}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    routingTable.textContent = data.routing_table;
+                } else {
+                    alert('Error fetching routing table: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while fetching the routing table.');
+            });
+    }
+
+    deviceSelect.addEventListener('change', updateRoutingTable);
+
+    staticRouteForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(staticRouteForm);
+        formData.append('device_p', 'router_device');
+        fetch(`/configure_static_route`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+                routingTable.textContent = data.routing_table;
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while configuring the static route.');
+        });
+    });
+
+    // Initial load of routing table
+    updateRoutingTable();
+});
+</script>
+{% endblock %}

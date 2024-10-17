@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .interface-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        padding: 20px;
+    }
+    .interface-card {
+        background-color: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        transition: all 0.3s ease;
+    }
+    .interface-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    }
+    .interface-name {
+        font-size: 1.2em;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .interface-status {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 0.9em;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+    }
+    .status-connected {
+        background-color: #4CAF50;
+        color: white;
+    }
+    .status-notconnect {
+        background-color: #F44336;
+        color: white;
+    }
+    .interface-vlan {
+        font-size: 0.9em;
+        color: #666;
+        margin-bottom: 10px;
+    }
+    .delete-vlan {
+        background-color: #FF5722;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+    .delete-vlan:hover {
+        background-color: #E64A19;
+    }
+</style>
+<div class="container mt-4">
+    <h2>Configure Switch Layer 2 Interface</h2>
+    <form id="interfaceConfigForm">
+        <div class="mb-3">
+            <label for="device_id" class="form-label">Select Device</label>
+            <select class="form-select" id="device_id" name="device_id" required>
+                {% for device in devices %}
+                    <option value="{{ device[0] }}">{{ device[1] }} ({{ device[2] }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="interface" class="form-label">Select Interface</label>
+            <select class="form-select" id="interface" name="interface" required>
+                <option value="">Select a device first</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="port_mode" class="form-label">Port Mode</label>
+            <select class="form-select" id="port_mode" name="port_mode" required>
+                <option value="access">Access</option>
+                <option value="trunk">Trunk</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="vlan" class="form-label">VLAN</label>
+            <select class="form-select" id="vlan" name="vlan">
+                <option value="">Select a device first</option>
+            </select>
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="port_security" name="port_security" value="on">
+            <label class="form-check-label" for="port_security">Enable Port Security</label>
+        </div>
+        <div id="portSecurityOptions" style="display: none;">
+            <div class="mb-3">
+                <label for="max_mac_addresses" class="form-label">Max MAC Addresses</label>
+                <input type="number" class="form-control" id="max_mac_addresses" name="max_mac_addresses" value="1" min="1">
+            </div>
+            <div class="mb-3">
+                <label for="violation_action" class="form-label">Violation Action</label>
+                <select class="form-select" id="violation_action" name="violation_action">
+                    <option value="shutdown">Shutdown</option>
+                    <option value="restrict">Restrict</option>
+                    <option value="protect">Protect</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Configure Interface</button>
+    </form>
+</div>
+
+<div id="interface_list_container" class="mt-4">
+    <h2 class="mb-4">Interfaces</h2>
+    <div id="interface_list" class="interface-list"></div>
+</div>
+
+<script>
+let deviceSelect; // Declare deviceSelect in the global scope
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // const deviceSelect = document.getElementById('device_id');
+        deviceSelect = document.getElementById('device_id');
+        const interfaceSelect = document.getElementById('interface');
+        const vlanSelect = document.getElementById('vlan');
+        const portSecurityCheckbox = document.getElementById('port_security');
+        const portSecurityOptions = document.getElementById('portSecurityOptions');
+        const interfaceConfigForm = document.getElementById('interfaceConfigForm');
+        const interfaceList = document.getElementById('interface_list');
+        
+        
+    
+        // Function to get the first device ID
+        function getFirstDeviceId() {
+            const firstOption = deviceSelect.options[0];
+            return firstOption ? firstOption.value : null;
+        }
+
+        const firstDeviceId = getFirstDeviceId();
+        if (firstDeviceId) {
+            deviceSelect.value = firstDeviceId;
+            updateInterfaceList();
+        }
+        // Add event listener for device selection change
+        deviceSelect.addEventListener('change', function() {
+            updateInterfaceList();
+        });
+    
+        portSecurityCheckbox.addEventListener('change', function() {
+            portSecurityOptions.style.display = this.checked ? 'block' : 'none';
+        });
+    
+        interfaceConfigForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            formData.append('device_p', "sl2_device");
+            fetch('/configure_interface', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Interface configured successfully');
+                    updateInterfaceList();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while configuring the interface');
+            });
+        });
+    
+        function updateInterfaceList() {
+        const deviceId = deviceSelect.value;
+        const device_p = 'sl2_device';
+        if (!deviceId) return;
+        fetch(`/get_interfaces?device_id=${deviceId}&device_p=${device_p}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Update the interface select dropdown
+                    interfaceSelect.innerHTML = '<option value="">Select an interface</option>';
+                    data.interfaces.forEach(intf => {
+                        interfaceSelect.innerHTML += `<option value="${intf.name}">${intf.name} - ${intf.status}</option>`;
+                    });
+
+                    // Update the VLAN select dropdown
+                    vlanSelect.innerHTML = '<option value="">Select a VLAN</option>';
+                    data.vlans.forEach(vlan => {
+                        vlanSelect.innerHTML += `<option value="${vlan.id}">${vlan.id} - ${vlan.name}</option>`;
+                    });
+
+                    // Update the interface list display
+                    const interfaceList = document.getElementById('interface_list');
+                    interfaceList.innerHTML = '';
+                    data.interfaces.forEach(intf => {
+                        const statusClass = intf.status.toLowerCase() === 'connected' ? 'status-connected' : 'status-notconnect';
+                        const interfaceCard = document.createElement('div');
+                        interfaceCard.className = 'interface-card';
+                        interfaceCard.innerHTML = `
+                            <div class="interface-name">${intf.name}</div>
+                            <div class="interface-status ${statusClass}">${intf.status}</div>
+                            <div class="interface-vlan">VLAN: ${intf.vlan}</div>
+                            <button class="delete-vlan" data-interface="${intf.name}" data-vlan="${intf.vlan}">Remove VLAN from Interface"${intf.name}"</button>
+                        `;
+                        interfaceList.appendChild(interfaceCard);
+                    });
+
+                    // Add event listeners for delete VLAN buttons
+                    document.querySelectorAll('.delete-vlan').forEach(button => {
+                        button.addEventListener('click', deleteVlan);
+                    });
+                } else {
+                    alert('Error fetching interfaces and VLANs: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while fetching interfaces and VLANs');
+            });
+    }
+
+    function deleteVlan(event) {
+        const interfaceName = event.target.dataset.interface;
+        const vlanId = event.target.dataset.vlan;
+        if (confirm(`Are you sure you want to remove VLAN ${vlanId} from interface ${interfaceName}?`)) {
+            const formData = new FormData();
+            formData.append('device_id', deviceSelect.value);
+            formData.append('interface', interfaceName);
+            formData.append('vlan', vlanId);
+            formData.append('device_p', 'sl2_device');
+
+            fetch('/delete_vlan_from_interface', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('VLAN removed successfully');
+                    updateInterfaceList();  // Refresh the interface list
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while removing the VLAN');
+            });
+        }
+    }
+});
+    </script>
+{% endblock %}

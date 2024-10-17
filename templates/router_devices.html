@@ -20,7 +20,7 @@
                 {% for row in router_device|sort(attribute='0') %}
                 <tr>
                     <td>{{ loop.index }}</td>
-                    <td>{{ row[1] }}</td>
+                    <td>{{ row[8] }}</td>
                     <td>{{ row[2] }}</td>
                     <td>{{ row[6] }}</td>
                     <td>{{ row[3] }}</td>
@@ -48,9 +48,7 @@
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <form action="{{ url_for('delete_device', id=row[0]) }}" method="POST" style="display: inline;">
-                                    <button type="submit" class="btn btn-danger">Confirm Delete</button>
-                                </form>
+                                <button onclick="deleteDevice('{{ row[0] }}')" type="button" class="btn btn-danger" data-bs-dismiss="modal">Delete</button>
                             </div>
                         </div>
                     </div>
@@ -85,5 +83,29 @@
     <a href="{{ url_for('add_device_router') }}" class="btn btn-success">Add New Device</a>
 </div>
 
+<script>
+function deleteDevice(id) {
+    const deviceType = 'router_device';
+    fetch(`/devices/delete/${id}?device_p=${deviceType}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'device_p=' + deviceType
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload(); // Reload the page to reflect the changes
+        } else {
+            alert('Error deleting device: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while deleting the device');
+    });
+}
+</script>
 
 {% endblock content %}

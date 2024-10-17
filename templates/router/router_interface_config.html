@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>Router Interface Configuration</h2>
+
+    <div class="mb-3">
+        <label for="deviceSelect" class="form-label">Select Device</label>
+        <select class="form-select" id="deviceSelect" name="device_id">
+            <option value="">Select a device</option>
+            {% for device in devices %}
+                <option value="{{ device[0] }}">{{ device[1] }} ({{ device[2] }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div id="configurationForm" style="display: none;">
+        <h3>Configure Interface</h3>
+        <form id="interfaceForm">
+            <div class="mb-3">
+                <label for="interfaceSelect" class="form-label">Select Interface</label>
+                <select class="form-select" id="interfaceSelect" name="interfaceName" required>
+                    <!-- Options will be populated dynamically -->
+                </select>
+            </div>
+
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="isSubinterface" name="isSubinterface">
+                <label class="form-check-label" for="isSubinterface">Configure as Subinterface</label>
+            </div>
+
+            <div id="vlanConfig" style="display: none;">
+                <div class="mb-3">
+                    <label for="vlanId" class="form-label">VLAN ID</label>
+                    <input type="number" class="form-control" id="vlanId" name="vlanId">
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="ipAddress" class="form-label">IP Address</label>
+                <input type="text" class="form-control" id="ipAddress" name="ipAddress" required>
+            </div>
+            <div class="mb-3">
+                <label for="subnetMask" class="form-label">Subnet Mask</label>
+                {{subnetmask()|safe}}
+
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Apply Configuration</button>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const deviceSelect = document.getElementById('deviceSelect');
+    const configurationForm = document.getElementById('configurationForm');
+    const interfaceForm = document.getElementById('interfaceForm');
+    const interfaceSelect = document.getElementById('interfaceSelect');
+    const isSubinterfaceCheckbox = document.getElementById('isSubinterface');
+    const vlanConfig = document.getElementById('vlanConfig');
+    const vlanIdInput = document.getElementById('vlanId');
+
+    deviceSelect.addEventListener('change', function() {
+        const device_p = 'router_device';
+        fetch(`/get_interfaces?device_id=${this.value}&device_p=${device_p}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    interfaceSelect.innerHTML = '<option value="">Select an interface</option>';
+                    data.interfaces.forEach(intf => {
+                        interfaceSelect.innerHTML += `<option value="${intf.name}">${intf.name} - ${intf.ip_address || 'No IP'} (${intf.status})</option>`;
+                    });
+                    configurationForm.style.display = 'block';
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while fetching interfaces');
+            });
+    });
+
+    function populateInterfaceSelect(interfaces) {
+        interfaceSelect.innerHTML = '<option value="">Select an interface</option>';
+        interfaces.forEach(intf => {
+            const option = document.createElement('option');
+            option.value = intf.name;
+            option.textContent = `${intf.name} - ${intf.ip_address || 'No IP'} (${intf.status})`;
+            interfaceSelect.appendChild(option);
+        });
+    }
+
+    isSubinterfaceCheckbox.addEventListener('change', function() {
+        vlanConfig.style.display = this.checked ? 'block' : 'none';
+        vlanIdInput.required = this.checked;
+    });
+
+    interfaceForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.append('device_id', deviceSelect.value);
+        formData.append('interfaceType', isSubinterfaceCheckbox.checked ? 'subinterface' : 'interface');
+        formData.append('device_p', 'router_device');
+        fetch('/router/configure_interface', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Configuration applied successfully');
+                // Refresh the interface list
+                deviceSelect.dispatchEvent(new Event('change'));
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    });
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h1>Switch Layer 3 VLAN Management</h1>
+    
+    <div class="mb-3">
+        <label for="device_id" class="form-label">Select Device</label>
+        <select class="form-select" id="device_id" name="device_id" required>
+            {% for device in devices %}
+                <option value="{{ device[0] }}">{{ device[1] }} ({{ device[2] }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <h2>Current VLANs</h2>
+    <table class="table" id="vlan-table">
+        <thead>
+            <tr>
+                <th>VLAN ID</th>
+                <th>Name</th>
+                <th>Ports</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+
+    <h2>Create New VLAN</h2>
+    <form id="create-vlan-form">
+        <div class="form-group">
+            <label for="new-vlan-id">VLAN ID:</label>
+            <input type="number" class="form-control" id="new-vlan-id" name="vlan_id" required>
+        </div>
+        <div class="form-group">
+            <label for="new-vlan-name">VLAN Name:</label>
+            <input type="text" class="form-control" id="new-vlan-name" name="vlan_name" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Create VLAN</button>
+    </form>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const deviceSelect = document.getElementById('device_id');
+        const vlanTable = document.getElementById('vlan-table').getElementsByTagName('tbody')[0];
+        const createVlanForm = document.getElementById('create-vlan-form');
+
+        function loadVlans() {
+            const selectedDeviceId = deviceSelect.value;
+            if (!selectedDeviceId) return;
+            const device_p = 'sl3_device';
+            fetch(`/get_vlans?device_id=${selectedDeviceId}&device_p=${device_p}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        vlanTable.innerHTML = '';
+                        data.vlans.forEach(function(vlan) {
+                            vlanTable.innerHTML += `
+                                <tr>
+                                    <td>${vlan.id}</td>
+                                    <td>${vlan.name}</td>
+                                    <td>${vlan.ports}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning edit-vlan" data-vlan-id="${vlan.id}" data-vlan-name="${vlan.name}">Edit</button>
+                                        <button class="btn btn-sm btn-danger delete-vlan" data-vlan-id="${vlan.id}">Delete</button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while fetching VLANs');
+                });
+        }
+
+        deviceSelect.addEventListener('change', loadVlans);
+
+        // Load VLANs for the first device on page load
+        if (deviceSelect.value) {
+            loadVlans();
+        }
+
+        createVlanForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            formData.append('device_id', deviceSelect.value);
+
+            fetch('/create_vlan', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('VLAN created successfully');
+                    loadVlans();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while creating the VLAN');
+            });
+        });
+
+        vlanTable.addEventListener('click', function(e) {
+            if (e.target.classList.contains('edit-vlan')) {
+                const vlanId = e.target.dataset.vlanId;
+                const vlanName = e.target.dataset.vlanName;
+                const newName = prompt('Enter new name for VLAN ' + vlanId, vlanName);
+                if (newName) {
+                    const formData = new FormData();
+                    formData.append('device_id', deviceSelect.value);
+                    formData.append('vlan_id', vlanId);
+                    formData.append('new_name', newName);
+
+                    fetch('/edit_vlan', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            alert('VLAN updated successfully');
+                            loadVlans();
+                        } else {
+                            alert('Error: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while updating the VLAN');
+                    });
+                }
+            } else if (e.target.classList.contains('delete-vlan')) {
+                const vlanId = e.target.dataset.vlanId;
+                if (confirm('Are you sure you want to delete VLAN ' + vlanId + '?')) {
+                    const formData = new FormData();
+                    formData.append('device_id', deviceSelect.value);
+                    formData.append('vlan_id', vlanId);
+
+                    fetch('/delete_vlan', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            alert('VLAN deleted successfully');
+                            loadVlans();
+                        } else {
+                            alert('Error: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while deleting the VLAN');
+                    });
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

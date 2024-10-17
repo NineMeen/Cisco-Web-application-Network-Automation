@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+    <h2>Router NAT Configuration</h2>
+
+    <div class="mb-3">
+        <label for="deviceSelect" class="form-label">Select Device</label>
+        <select class="form-select" id="deviceSelect" name="device_id">
+            <option value="">Select a device</option>
+            {% for device in devices %}
+                <option value="{{ device[0] }}">{{ device[1] }} ({{ device[2] }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div id="interfaceList" class="mb-3">
+        <!-- Interface list will be populated dynamically -->
+    </div>
+
+    <div id="natConfigForm" style="display: none;">
+        <h3>Configure NAT</h3>
+        <form id="natForm">
+            <div class="mb-3">
+                <label for="natType" class="form-label">NAT Type</label>
+                <select class="form-select" id="natType" name="natType">
+                    <option value="inside">Inside</option>
+                    <option value="outside">Outside</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="interfaceName" class="form-label">Interface</label>
+                <input type="text" class="form-control" id="interfaceName" name="interfaceName" readonly>
+            </div>
+            <button type="submit" class="btn btn-primary">Apply NAT Configuration</button>
+        </form>
+    </div>
+
+    <div id="natRuleForm" class="mt-4">
+        <h3>Create NAT Rule</h3>
+        <form id="createNatRuleForm">
+            <div class="mb-3">
+                <label for="aclSelect" class="form-label">Select ACL</label>
+                <select class="form-select" id="aclSelect" name="aclName" required>
+                    <!-- ACL options will be populated dynamically -->
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="outsideInterface" class="form-label">Outside Interface</label>
+                <select class="form-select" id="outsideInterface" name="outsideInterface" required>
+                    <!-- Options will be populated dynamically -->
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Create NAT Rule</button>
+        </form>
+    </div>
+
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const deviceSelect = document.getElementById('deviceSelect');
+    const interfaceList = document.getElementById('interfaceList');
+    const natConfigForm = document.getElementById('natConfigForm');
+    const natForm = document.getElementById('natForm');
+    const createNatRuleForm = document.getElementById('createNatRuleForm');
+    const natRuleList = document.getElementById('natRuleList');
+    const outsideInterface = document.getElementById('outsideInterface');
+    const aclSelect = document.getElementById('aclSelect');
+
+    deviceSelect.addEventListener('change', function() {
+        const device_p = 'sl3_device';
+        fetch(`/get_interfaces?device_id=${this.value}&device_p=${device_p}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    displayInterfaces(data.interfaces);
+                    populateOutsideInterfaces(data.interfaces);
+                    updateAclList();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+
+        updateNatRules();
+    });
+
+    function displayInterfaces(interfaces) {
+        interfaceList.innerHTML = '<h3>Interfaces</h3>';
+        interfaces.forEach(intf => {
+            const button = document.createElement('button');
+            button.textContent = `${intf.name} - ${intf.ip_address || 'No IP'} (${intf.status})`;
+            button.className = 'btn btn-outline-primary m-1';
+            button.addEventListener('click', () => showNatConfigForm(intf.name));
+            interfaceList.appendChild(button);
+        });
+    }
+
+    function populateOutsideInterfaces(interfaces) {
+        outsideInterface.innerHTML = '';
+        interfaces.forEach(intf => {
+            const option = document.createElement('option');
+            option.value = intf.name;
+            option.textContent = intf.name;
+            outsideInterface.appendChild(option);
+        });
+    }
+
+    function showNatConfigForm(interfaceName) {
+        natConfigForm.style.display = 'block';
+        document.getElementById('interfaceName').value = interfaceName;
+    }
+
+    function updateAclList() {
+        const device_p = 'sl3_device';
+        fetch(`/get_acl_rules?device_id=${deviceSelect.value}&device_p=${device_p}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    populateAclSelect(data.acl_groups);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }
+
+    function populateAclSelect(aclGroups) {
+        aclSelect.innerHTML = '';
+        for (const aclName in aclGroups) {
+            const option = document.createElement('option');
+            option.value = aclName;
+            option.textContent = aclName;
+            aclSelect.appendChild(option);
+        }
+    }
+
+    natForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.append('device_id', deviceSelect.value);
+        const device_p = 'sl3_device';
+        fetch(`/configure_nat?device_p=${device_p}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    });
+
+    createNatRuleForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.append('device_id', deviceSelect.value);
+        const device_p = 'sl3_device';
+        fetch(`/create_nat_rule?device_p=${device_p}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+                updateNatRules();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    });
+
+    function updateNatRules() {
+        const device_p = 'router_device';
+        fetch(`/get_nat_rules?device_id=${deviceSelect.value}&device_p=${device_p}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    displayNatRules(data.nat_rules);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }
+
+    function displayNatRules(rules) {
+        natRuleList.innerHTML = '<h3>NAT Rules</h3>';
+        const table = document.createElement('table');
+        table.className = 'table table-striped';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Inside Global</th>
+                    <th>Inside Local</th>
+                    <th>Outside Local</th>
+                    <th>Outside Global</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rules.map(rule => `
+                    <tr>
+                        <td>${rule.inside_global}</td>
+                        <td>${rule.inside_local}</td>
+                        <td>${rule.outside_local}</td>
+                        <td>${rule.outside_global}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+        natRuleList.appendChild(table);
+    }
+});
+</script>
+
+{% endblock %}

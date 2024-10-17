@@ -20,7 +20,7 @@
                 {% for row in sl2_device|sort(attribute='0') %}
                 <tr>
                     <td>{{ loop.index }}</td>
-                    <td>{{ row[1] }}</td>
+                    <td>{{ row[8] }}</td>
                     <td>{{ row[2] }}</td>
                     <td>{{ row[6] }}</td>
                     <td>{{ row[3] }}</td>
@@ -84,29 +84,27 @@
 </div>
 
 <script>
-function deleteDevice(id, deviceType) {
-    deviceType = 'sl2_device';
-    if (confirm('Are you sure you want to delete this device?')) {
-        fetch(`/devices/delete/${id}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'device_p=' + deviceType
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                location.reload(); // Reload the page to reflect the changes
-            } else {
-                alert('Error deleting device: ' + data.message);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('An error occurred while deleting the device');
-        });
-    }
+function deleteDevice(id) {
+    const deviceType = 'sl2_device';
+    fetch(`/devices/delete/${id}?device_p=${deviceType}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'device_p=' + deviceType
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload(); // Reload the page to reflect the changes
+        } else {
+            alert('Error deleting device: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while deleting the device');
+    });
 }
 </script>
 
