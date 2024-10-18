@@ -44,14 +44,3 @@ This project is a web-based network automation tool for managing Cisco devices. 
 
 6. Access the application in your web browser at `http://localhost:8080`
 
-## Usage
-
-[Add brief usage instructions here]
-
-## Contributing
-
-[Add contribution guidelines here]
-
-## License
-
-[Add license information here]
