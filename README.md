@@ -34,7 +34,7 @@ This project is a web-based network automation tool for managing Cisco devices. 
 
 4. Set up the SQLite database:
    ```
-   python setup_database.py
+   python setupdb.py
    ```
 
 5. Run the application:
