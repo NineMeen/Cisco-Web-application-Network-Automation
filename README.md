@@ -17,8 +17,8 @@ This project is a web-based network automation tool for managing Cisco devices. 
 
 1. Clone this repository:
    ```
-   git clone [https://github.com/yourusername/network-automation-tool.git](https://github.com/NineMeen/Cisco-Web-application-Network-Automation.git)
-   cd network-automation-tool
+   git clone https://github.com/NineMeen/Cisco-Web-application-Network-Automation.git
+   cd Cisco-Web-application-Network-Automation
    ```
 
 2. Create a virtual environment (optional but recommended):
