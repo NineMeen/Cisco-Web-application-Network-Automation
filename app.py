@@ -1215,6 +1215,8 @@ def router_configure_interface():
                 commands.extend([
                     f'interface {interface_name}',
                     'no switchport',
+                    f'ip address {ip_address} {subnet_mask}',
+                    'no shutdown',
                 ])
                 if interface_type == 'subinterface' and vlan_id:
                     commands.extend([
@@ -1270,7 +1272,7 @@ def router_configure_nat():
     device_info = get_device_info(device_id, device_p)
     if not device_info:
         return jsonify({'status': 'error', 'message': 'Device not found'})
-
+    
     device = {
         'device_type': device_info['device_type'],
         'ip': device_info['ip'],
@@ -1300,6 +1302,7 @@ def create_nat_rule():
     outside_interface = request.form['outsideInterface']
     device_p = request.form.get('device_p')
     device_info = get_device_info(device_id, device_p)
+    print(device_id)
     if not device_info:
         return jsonify({'status': 'error', 'message': 'Device not found'})
 

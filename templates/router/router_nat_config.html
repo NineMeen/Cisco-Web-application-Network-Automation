@@ -141,8 +141,8 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         const formData = new FormData(this);
         formData.append('device_id', deviceSelect.value);
-        const device_p = 'router_device';
-        fetch(`/configure_nat?device_p=${device_p}`, {
+        formData.append('device_p', 'router_device');
+        fetch(`/configure_nat`, {
             method: 'POST',
             body: formData
         })
@@ -161,8 +161,8 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         const formData = new FormData(this);
         formData.append('device_id', deviceSelect.value);
-        const device_p = 'router_device';
-        fetch(`/create_nat_rule?device_p=${device_p}`, {
+        formData.append('device_p', 'router_device');
+        fetch(`/create_nat_rule`, {
             method: 'POST',
             body: formData
         })
@@ -196,7 +196,7 @@ document.addEventListener('DOMContentLoaded', function() {
         natRuleList.innerHTML = '<h3>NAT Rules</h3>';
         const table = document.createElement('table');
         table.className = 'table table-striped';
-        table.innerHTML = `
+        table.innerHTML = ` 1
             <thead>
                 <tr>
                     <th>Inside Global</th>
