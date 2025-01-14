@@ -18,11 +18,11 @@ This project is a web-based network automation tool for managing Cisco devices. 
 1. Clone this repository:
    ```
    git clone https://github.com/NineMeen/Cisco-Web-application-Network-Automation.git
-   cd Cisco-Web-application-Network-Automation
    ```
 
 2. Create a virtual environment (optional but recommended):
    ```
+   cd Cisco-Web-application-Network-Automation
    python -m venv venv
    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
    ```
