@@ -78,6 +78,9 @@ def setup_user_db():
     )
     ''')
 
+    # Add default admin user if it doesn't exist
+    cursor.execute('INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)', ('admin', 'admin'))
+
     conn.commit()
     conn.close()
     print("user.db setup complete.")
