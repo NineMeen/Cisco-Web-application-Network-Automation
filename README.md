@@ -43,4 +43,9 @@ This project is a web-based network automation tool for managing Cisco devices. 
    ```
 
 6. Access the application in your web browser at `http://localhost:8080`
+7. Login with user and password
+   ```
+   username : admin
+   password : admin
+   ```
 
