@@ -33,6 +33,7 @@ This project is a web-based network automation tool for managing Cisco devices. 
    ```
 
 4. Set up the SQLite database:
+   You will be prompted to set a password for the default admin user. You can also pass credentials using the `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables.
    ```
    python setupdb.py
    ```
@@ -43,9 +44,5 @@ This project is a web-based network automation tool for managing Cisco devices. 
    ```
 
 6. Access the application in your web browser at `http://localhost:8080`
-7. Login with user and password
-   ```
-   username : admin
-   password : admin
-   ```
+7. Login with the user and password you configured during setup (default username: `admin`).
 
