@@ -78,8 +78,20 @@ def setup_user_db():
     )
     ''')
 
+    admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
+    admin_password = os.environ.get('ADMIN_PASSWORD')
+
+    if not admin_password:
+        import getpass
+        import sys
+        print(f"Please set a password for the '{admin_username}' user.")
+        admin_password = getpass.getpass("Admin Password: ")
+        if not admin_password:
+            print("Error: Password cannot be empty.")
+            sys.exit(1)
+
     # Add default admin user if it doesn't exist
-    cursor.execute('INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)', ('admin', 'admin'))
+    cursor.execute('INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)', (admin_username, admin_password))
 
     conn.commit()
     conn.close()
