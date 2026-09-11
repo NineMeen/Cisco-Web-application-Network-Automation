@@ -1,3 +1,4 @@
+import getpass
 import sqlite3
 import os
 
@@ -78,8 +79,20 @@ def setup_user_db():
     )
     ''')
 
+    admin_username = os.environ.get('ADMIN_USERNAME')
+    admin_password = os.environ.get('ADMIN_PASSWORD')
+
+    if not admin_username:
+        admin_username = input('Enter admin username [admin]: ') or 'admin'
+
+    if not admin_password:
+        admin_password = getpass.getpass(f'Enter password for {admin_username}: ')
+        while not admin_password:
+            print("Password cannot be empty.")
+            admin_password = getpass.getpass(f'Enter password for {admin_username}: ')
+
     # Add default admin user if it doesn't exist
-    cursor.execute('INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)', ('admin', 'admin'))
+    cursor.execute('INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)', (admin_username, admin_password))
 
     conn.commit()
     conn.close()
